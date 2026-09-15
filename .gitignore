@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+.Python
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Environments
+.venv/
+venv/
+env/
+
+# Secrets -- LLM API keys live here, never in the repo
+.env
+.env.*
+*.key
+secrets.*
+
+# Data. Snapshots are large, regenerable, and versioned by issue date in Box;
+# git is the wrong place for them. Keep the directories, ignore the contents.
+data/*
+!data/.gitkeep
+raw/*
+!raw/.gitkeep
+
+*.parquet
+*.csv.gz
+*.sqlite
+
+# macOS
+.DS_Store
+.AppleDouble
+
+# LaTeX build artifacts (proposal + report)
+*.aux
+*.log
+*.out
+*.synctex.gz
+*.fls
+*.fdb_latexmk
