@@ -1,6 +1,8 @@
-# Core dependencies. Keep this list installable from a clean venv with no
-# system libraries -- the Week 1 gate is "clone, install, pytest passes", and
-# a dependency that needs a compiler breaks that for everyone.
+# Every package here installs from wheels on Python 3.14 with no compiler or
+# system libraries (checked Oct 2026) -- the gate is "clone, install, pytest
+# passes", and a dependency that needs a build toolchain breaks that.
+
+# Core: ingestion, snapshot store, alignment
 pandas>=2.1
 numpy>=1.26
 pyarrow>=15.0          # parquet backend for the snapshot store
@@ -8,9 +10,21 @@ python-dateutil>=2.9
 requests>=2.31
 pytest>=7.4
 
-# Added as each stage lands, so a failed wheel build never blocks the gate:
-#   statsmodels     SARIMA control baseline
-#   scikit-learn    metrics, rolling-origin splits
-#   lightgbm        gradient-boosted treatment model
-#   anthropic       LLM extraction pass
-#   geopandas       choropleth for the Demo I/II map (needs GDAL -- install last)
+# Modeling and evaluation
+scipy>=1.11            # Wilcoxon signed-rank; permutation inference in esda
+
+# News: fetching, LLM labeling, sentiment baseline
+trafilatura>=2.0       # article main-text extraction
+beautifulsoup4>=4.12   # fallback extraction + publish-date metadata
+lxml>=5.0
+anthropic>=1.11        # LLM labeler (needs ANTHROPIC_API_KEY at run time only)
+vaderSentiment>=3.3    # lexicon sentiment baseline
+
+# Spatial: shapes, hot spots, map. pyogrio wheels bundle GDAL; no system GDAL.
+geopandas>=1.0
+pyogrio>=0.10
+pyproj>=3.6
+shapely>=2.0
+libpysal>=4.12         # contiguity weights
+esda>=2.6              # Getis-Ord Gi*, local Moran's I
+folium>=0.17           # interactive HTML map

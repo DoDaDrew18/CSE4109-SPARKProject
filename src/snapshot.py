@@ -170,6 +170,26 @@ def _normalize(frame: pd.DataFrame, issue: pd.Timestamp) -> pd.DataFrame:
     return out[ordered].sort_values(_KEY).reset_index(drop=True)
 
 
+def _same_content(a: pd.DataFrame, b: pd.DataFrame) -> bool:
+    """True if two snapshot frames hold the same values.
+
+    ``DataFrame.equals`` also compares dtypes, and under pandas 3 a fresh frame
+    carries second-precision timestamps while the parquet round trip returns
+    millisecond precision. Same instants, different dtype: ``equals`` would
+    call an identical re-run a rewrite and refuse it.
+    """
+    if list(a.columns) != list(b.columns) or len(a) != len(b):
+        return False
+    try:
+        pd.testing.assert_frame_equal(
+            a.reset_index(drop=True), b.reset_index(drop=True),
+            check_dtype=False, check_exact=True,
+        )
+    except AssertionError:
+        return False
+    return True
+
+
 class SnapshotStore:
     """Immutable, on-disk store of dated source pulls.
 
@@ -210,7 +230,7 @@ class SnapshotStore:
 
         if target.exists():
             existing = self._read_file(target)
-            if existing.equals(normalized):
+            if _same_content(existing, normalized):
                 return target
             raise SnapshotExistsError(
                 f"snapshot {source} issue={issue.date()} already exists with "
