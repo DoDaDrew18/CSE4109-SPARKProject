@@ -1,76 +1,94 @@
-# SPARK
+# Using Local Data to Nowcast and Track County-Level Outbreaks
 
-An AI pipeline for nowcasting county-level respiratory illness. We extract
-structured signals from local news with an LLM, feed them to a supervised
-nowcaster, and test one claim:
+Andrew Aviado · Brian Zhou · Noah Wolk
+CSE 4109: Introduction to AI for Health, Fall 2026 · Washington University in St. Louis
 
-> Does text improve county-level respiratory nowcasts once the model sees only
-> the data that existed on the prediction date?
+## The question
 
-A clean negative under honest evaluation is a real result, and we report it as
-one.
+Emergency department (ED) visit counts and wastewater readings come out one to
+two weeks late, and the early numbers keep changing for weeks after that. Local
+news covers outbreaks sooner, but as plain text, not data.
 
-CSE 4109: Introduction to AI for Health, Fall 2026.
-Andrew Aviado, Brian Zhou, Noah Wolk.
+We ask whether an LLM can pull useful facts out of local news, and whether
+those facts help track county-level respiratory illness **when the model sees
+only the delayed, still-changing official numbers**. If the answer is no, that
+is still a useful result.
 
-## The one rule
+## Why "still-changing" matters — measured, not assumed
 
-Official respiratory surveillance has two defects. **Reporting lag**: this
-week's ED percentage is not published this week. **Backfill**: the first value
-is incomplete and revised upward for weeks.
+Most models are scored against the final, corrected numbers, which nobody had
+on the day of the prediction, so they look better than they are. We checked
+whether that is a real problem for our target:
 
-Most models are scored against the finalized series, using numbers that did
-not exist at prediction time. That inflates apparent skill. So:
+> At the January 2026 flu peak (epiweek 202601), **19% of US counties had their
+> first published value revised by 10% or more**, and revisions ran upward
+> 1,370 times versus 215 downward.
 
-**Nothing trains or scores against the finalized series. Every model reads a
-vintage.**
+So every model in this repo trains and scores on a **vintage**: the data
+exactly as it was published on the prediction date.
 
-A *vintage* is what was known on a given date. `SnapshotStore.load_vintage`
-is the only sanctioned way to read the target, and `latest_vintage` is for
-descriptive reporting only — never for scoring. If you find yourself reaching
-past it to a CSV of final values, that is the leak, and the result will not
-survive review.
+## Approach
+
+**(a) Extraction.** An LLM reads local news and turns each article into a short
+record: county, illness, how bad it sounds, and the date. Articles carry no
+county tag, so the model infers it; a second pass checks every field against a
+direct quote and drops anything it cannot ground.
+
+**(b) Nowcasting.** Estimate this week's share of ED visits that are
+respiratory, per county. Start with linear regression on lagged official
+numbers, add SARIMA and gradient boosting, then layer news features on top to
+see whether they buy anything.
+
+**(c) Ablation.** Drop one source at a time and measure the accuracy lost.
+
+**Evaluation.** Extraction: quote-grounding on every article, plus a hand-check
+of 50–80 articles for precision and recall, weighted toward the inferred county
+field. Nowcasting: R², the fraction of the gap between late and final data that
+each model closes, and a Wilcoxon signed-rank test on paired weekly errors.
+Rolling-origin splits, results grouped by county population.
+
+## Data
+
+| Source | What it gives us | Access | Status |
+| --- | --- | --- | --- |
+| **CDC NSSP**, via Delphi Epidata | **Target**: % of ED visits for COVID, flu, RSV — weekly, ~2,400 counties, with revision history | Public API, no key | ✅ `src/ingest_nssp.py` |
+| **CDC NWSS** wastewater, via data.cdc.gov | Early warning that doesn't depend on anyone seeking care | Public API, no key | Next — dataset `atcp-73re` |
+| **GDELT** | Raw news text for the LLM | Public API, no key | After the county list is set |
+| County boundaries (Census) | Map shapes, joined on 5-digit FIPS | Static file, no API | For the map |
+| EPA AirNow | PM2.5, ozone | Free key required | Deferred past Demo I |
+| NOAA | Temperature, humidity | Free token required | Deferred past Demo I |
+
+What we verified against the live API (October 2026):
+
+- **The combined respiratory signal is discontinued** (ends epiweek 202439).
+  We use the three live signals — COVID, influenza, RSV — and combine them at
+  the modeling stage.
+- **Honest backtests start in April 2024.** Delphi archives first prints from
+  epiweek 202416 on; weeks before that only exist as already-revised values.
+  Some later weeks have holes in the archive.
+- **`as_of` takes an epiweek, not a date.** `as_of=202607` works.
+  `as_of=20260215` is silently read as a far-future week and returns the
+  *latest* data — a leak that raises no error. The ingester refuses it.
+
+## Data collection protocol
+
+1. **Every week, run** `python -m src.ingest_nssp`. Each run saves one vintage
+   of all counties, stamped with that day's date. A missed week can be rebuilt
+   later with `--as-of`, but only as well as Delphi's archive allows.
+2. **Read the target only through a vintage.** Use
+   `SnapshotStore.load_vintage(source, as_of)` for anything that trains or
+   scores. `latest_vintage` is for plots and descriptive stats, never for scoring.
+3. **Snapshots are never edited.** A correction goes in under a new issue date.
+4. **Data never goes in git.** `raw/` and `data/` are gitignored; share
+   snapshots through the Box folder.
 
 ```python
 from src.snapshot import SnapshotStore
 
 store = SnapshotStore("raw/snapshots")
-
-# What we knew on 2026-01-14: week of 01-04 at 4.1%
-store.load_vintage("nssp", "2026-01-14")
-
-# What we know now: that same week settled at 6.0%
-store.latest_vintage("nssp")
-
-# How it got there -- the backfill curve
-store.revision_history("nssp", geo_value="29189", time_value="2026-01-04")
+store.load_vintage("nssp_influenza", "2026-08-08")   # what we knew on Aug 8
+store.revision_history("nssp_influenza", "17031", "2026-07-26")  # one county-week's revisions
 ```
-
-Every observation carries two dates, following the Delphi Epidata convention:
-
-| column       | meaning                                  |
-| ------------ | ---------------------------------------- |
-| `time_value` | the reference week the number describes   |
-| `issue`      | the date that number was published        |
-
-Snapshots are immutable. Corrections go in under a later `issue`, never as an
-edit to a stored file — rewriting a snapshot would silently change what a past
-model "knew" and quietly invalidate every backtest built on it.
-
-## Layout
-
-```
-src/            pipeline modules
-  snapshot.py   append-only snapshot store + vintage loader
-tests/          pytest suite
-raw/            immutable source pulls, partitioned by issue date (gitignored)
-data/           derived/aligned feature tables (gitignored)
-notebooks/      exploration
-```
-
-`raw/` and `data/` are gitignored except for their `.gitkeep`. Snapshots are
-large and regenerable; they are versioned by issue date in the Box folder, not
-in git. **Do not commit parquet.**
 
 ## Setup
 
@@ -79,32 +97,36 @@ git clone https://github.com/DoDaDrew18/CSE4109-SPARKProject.git
 cd CSE4109-SPARKProject
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python -m pytest tests/ -q      # expect 12 passed
+python -m pytest tests/ -q          # expect 15 passed
+python -m src.ingest_nssp           # pull this week's vintage
 ```
 
-`requirements.txt` is deliberately lean: it installs from a clean venv with no
-system libraries. Heavier dependencies (`geopandas`, `lightgbm`, `statsmodels`)
-are listed as comments and get added when the stage that needs them lands, so a
-failed wheel build never blocks the test gate.
+## Layout
 
-API keys go in `.env`, which is gitignored. Never commit a key.
+```
+src/snapshot.py      append-only snapshot store + vintage loader
+src/ingest_nssp.py   NSSP target ingestion (today's vintage, or --as-of epiweek)
+tests/               pytest suite (offline; no network needed)
+raw/                 snapshots by source and issue date (gitignored)
+data/                aligned county-week tables (gitignored)
+notebooks/           exploration
+```
 
-## Division of labor
+## Team
 
-| Member        | Role       | Owns                                                        |
-| ------------- | ---------- | ----------------------------------------------------------- |
-| Andrew Aviado | Data       | Multi-source ingestion, spatial/temporal alignment, vintages |
-| Noah Wolk     | ML         | Baselines, forecasting models, backtesting harness, ablations |
-| Brian Zhou    | Software   | LLM extraction & validation, GIS visualization, demo         |
+| Member | Role | Owns |
+| --- | --- | --- |
+| Andrew Aviado | Data Lead | Ingestion, county/week alignment, vintage handling |
+| Noah Wolk | ML Engineer | Baselines, nowcasting models, backtesting, ablations |
+| Brian Zhou | Software Engineer | LLM extraction and validation, map, demo |
 
 ## Status
 
-- [x] **Week 1 gate** — snapshot store and vintage loader, 12 tests passing
-- [ ] NSSP county coverage check (confirm before Demo I; fall back to state level if uneven)
-- [ ] Ingestion: NSSP target, NWSS wastewater, AirNow, NOAA
-- [ ] Seasonal-naive + SARIMA controls
-- [ ] LLM extraction with quoted-span validation
-- [ ] Gradient-boosted treatment model + quantile intervals
-- [ ] Rolling-origin backtest, skill-over-baseline by horizon
-- [ ] Leave-one-source-out ablation
-- [ ] GeoPandas map + natural-language query (Demo I/II)
+- [x] Snapshot store and vintage loader
+- [x] NSSP target ingestion, verified end to end against the live API
+- [ ] Choose the 50–100 study counties (population × NSSP coverage × news coverage)
+- [ ] NWSS wastewater ingestion
+- [ ] Aligned county-week training table for modeling
+- [ ] GDELT article pull for extraction
+- [ ] Baselines → SARIMA → gradient boosting → + news features
+- [ ] Map with natural-language search (Demo I/II)
