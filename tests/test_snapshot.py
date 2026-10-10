@@ -193,3 +193,27 @@ def test_revision_history_is_ordered_oldest_first(backfilled):
         pd.Timestamp(ISSUE_B),
         pd.Timestamp(ISSUE_C),
     ]
+
+
+def test_rerunning_an_ingest_shaped_write_is_a_noop(store):
+    """A fresh frame and its parquet round trip differ only in timestamp unit.
+
+    Built the way ``ingest_nssp`` builds frames (``pd.Timestamp`` from a
+    ``date``), the fresh frame carries second-precision datetimes while the
+    stored file reads back as milliseconds. Same instants, so a re-run must
+    be a no-op, not a SnapshotExistsError.
+    """
+    from datetime import date
+
+    def frame():
+        return pd.DataFrame({
+            "geo_value": [STL_COUNTY],
+            "time_value": [pd.Timestamp(date(2026, 1, 4))],
+            "value": [4.1],
+            "issue": [pd.Timestamp(date(2026, 1, 17))],
+            "delphi_issue": pd.Series([202602], dtype="int64"),
+        })
+
+    first = store.write_snapshot("nssp_flu", "2026-01-17", frame())
+    second = store.write_snapshot("nssp_flu", "2026-01-17", frame())
+    assert first == second
