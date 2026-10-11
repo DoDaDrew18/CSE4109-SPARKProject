@@ -92,6 +92,25 @@ week may still have moved slightly after the date (revision profile: under 2%
 of values move >5% after 8 weeks). The ridge rungs learn from about 150
 local examples, and they lose.
 
+**News (first pass, LLM labels, not yet checked against humans).** A local
+model (Qwen3 8B via Ollama, free; `python -m src.news.label`) labeled 224
+articles; the quote check kept about 50 relevant articles tied to a study
+county (Oct 2024 – Jan 2026). Adding news on top of the gradient-boosting
+model plus the same local correction (rung 12 vs rung 11) lowers MAE from
+0.61 to 0.56 (best overall, +22% vs carry-forward; paired Wilcoxon p = 0.036).
+Read this as a lead, not a result:
+
+- The whole gain comes from about four weeks at the Feb 2025 flu peak in
+  Louisville and Memphis; over all other weeks news is slightly worse. It
+  helps Louisville and Memphis, does nothing for Chicago, and hurts
+  Indianapolis.
+- The corpus was hand-picked around known peaks (`stratum = respiratory`),
+  which favors news by construction. An honest test needs articles collected
+  without knowing where the peaks were (e.g. every GDELT hit).
+- On the 36 scored weeks that had news, the median change is about zero
+  (p = 0.56); the mean gain is a few large peak-week corrections.
+- LLM labels have no human agreement yet (`python -m src.news.agreement`).
+
 **Ablation** (`data/results/metrics_ablation.csv`): without the season
 harmonics the gain falls to +7%, and without momentum to +14%. Dropping the
 study metros' own HSAs from training changes nothing (+19%, p = 0.58): the
@@ -143,8 +162,9 @@ python -m src.ingest_nwss --archive       # recover past NWSS vintages from the 
 
 # news
 python -m src.news.fetch                  # download text for labels/articles.csv → raw/news/
-export ANTHROPIC_API_KEY=...              # only for the LLM labeler
-python -m src.news.label --runs 2 && python -m src.news.ground
+ollama pull qwen3:8b                      # free local LLM (or --backend anthropic)
+python -m src.news.label && python -m src.news.ground
+python -m src.align --news-source llm     # news_n / news_concern from LLM labels
 python -m src.news.baseline && python -m src.news.agreement   # → data/labels/agreement_report.md
 
 # table, models, map
@@ -225,8 +245,10 @@ raw/, data/            snapshots, pulls, derived tables (gitignored)
 - [x] LLM labeler, quote-grounding check, agreement report (tested offline)
 - [x] Map with Gi* hot spots; SaTScan input export
 - [ ] **Hand-label 60–200 articles** (two labelers on the first 30)
-- [ ] Run the LLM labeler (needs `ANTHROPIC_API_KEY`) and the agreement report
+- [x] Run the LLM labeler (local Qwen3 8B via Ollama) + quote check
+- [ ] Agreement report vs human labels
 - [x] ARIMA, HistGBM, XGBoost, random forest, SVM, linear rungs; ablation
-- [ ] News rung in the ladder (plugs in automatically once `news_*` columns exist)
+- [x] News rungs (4: ridge + news; 12: GBM + local + news), first pass on LLM labels
+- [ ] News test on a corpus not picked around known peaks
 - [ ] Decide how to treat Missouri labels before Aug 2025
 - [ ] Natural-language search on the map (Demo II)

@@ -23,6 +23,11 @@ Two model classes on the same rows, compared with the naive rung:
   7-10           the same history and features with XGBoost, a random forest,
                  an RBF support-vector machine and a linear model, so a gain
                  can be credited to the data rather than to one model class
+ 11 gbm_local    rung 6 plus a ridge correction fitted on the local honest
+                 training set (metro intercepts only): learns e.g. that a first
+                 print runs low
+ 12 gbm_news     rung 11 plus the news features. 12 vs 11 is the news effect on
+                 top of the best model, with the local correction held fixed
 
 A rung whose columns are absent from ``county_week`` (loader not built yet,
 or no data) is skipped, not faked; so are rungs 6-10 without the CDC CSV.
@@ -130,6 +135,8 @@ LADDER = (
     Rung("8_rf_history", (), model="history:rf"),
     Rung("9_svm_history", (), model="history:svm"),
     Rung("10_linear_history", (), model="history:linear"),
+    Rung("11_gbm_local", (), model="gbm_local"),
+    Rung("12_gbm_news", ("news",), model="gbm_local"),
     # For county-weeks with no official ED value on the date at all.
     Rung("n0_mean", (), no_official=True),
     Rung("n_season", ("season",), no_official=True),
@@ -366,6 +373,24 @@ def fit_predict_arima(table: pd.DataFrame, origin, fips) -> np.ndarray:
     return np.asarray(out, dtype=float)
 
 
+def fit_predict_gbm_local(model, train: pd.DataFrame, test: pd.DataFrame, columns,
+                          ridge: float | None = None) -> np.ndarray:
+    """History-GBM prediction times a ridge correction learned on local labels.
+
+    The target is log(label / GBM prediction) on the honest training set, on
+    ``columns`` plus metro intercepts. With no columns it is a per-metro bias
+    correction; with news columns, any further gain is the news.
+    """
+    ridge = RIDGE if ridge is None else ridge
+    base_tr = hist_mod.predict(model, train)
+    base_te = hist_mod.predict(model, test)
+    metros = sorted(METROS)
+    x_tr, center = _design(train, columns, metros)
+    x_te, _ = _design(test, columns, metros, center)
+    y = _log(train["label"]) - _log(base_tr)
+    return np.exp(_log(base_te) + _ridge(x_tr, y, x_te, len(columns), ridge))
+
+
 def rolling_origin(table: pd.DataFrame, rungs=None, label_lag: int = LABEL_LAG,
                    window: int = WINDOW, min_train: int = MIN_TRAIN,
                    history: pd.DataFrame | None = None) -> pd.DataFrame:
@@ -381,7 +406,7 @@ def rolling_origin(table: pd.DataFrame, rungs=None, label_lag: int = LABEL_LAG,
     feats = features(table)
     rungs = available_rungs(feats) if rungs is None else rungs
     if history is None:
-        rungs = [r for r in rungs if not r.model.startswith("history:")]
+        rungs = [r for r in rungs if not r.model.startswith(("history:", "gbm_local"))]
     else:
         refit = hist_mod.Refitter(history)
     groups = group_columns(feats)
@@ -406,6 +431,12 @@ def rolling_origin(table: pd.DataFrame, rungs=None, label_lag: int = LABEL_LAG,
                 rows, pred = official, hist_mod.predict(model, test[official])
             elif len(train) < min_train:
                 continue
+            elif rung.model == "gbm_local":
+                model = refit.model(origin)
+                if model is None:
+                    continue
+                rows = official
+                pred = fit_predict_gbm_local(model, train, test[official], other)
             elif rung.no_official:
                 rows, pred = np.ones(len(test), bool), fit_predict_no_official(train, test, other)
             else:

@@ -28,12 +28,14 @@ INK, MUTED, GRID = "#0b0b0b", "#52514e", "#e4e3df"
 BLUE, ORANGE, GRAY = "#2a78d6", "#eb6834", "#a3a29c"
 LABELS = {"0_naive": "Carry last value forward", "1_ar_season": "Ridge: AR + season",
           "2_weather": "Ridge: + weather", "3_wastewater": "Ridge: + wastewater",
-          "4_news": "Ridge: + news", "5_arima": "ARIMA(2,1,0)",
+          "4_news": "Ridge: + news (LLM)", "5_arima": "ARIMA(2,1,0)",
           "6_gbm_history": "Gradient boosting, US history",
           "7_xgb_history": "XGBoost, US history",
           "8_rf_history": "Random forest, US history",
           "9_svm_history": "SVM (RBF), US history",
-          "10_linear_history": "Linear, US history"}
+          "10_linear_history": "Linear, US history",
+          "11_gbm_local": "Gradient boosting + local correction",
+          "12_gbm_news": "Gradient boosting + local + news (LLM)"}
 
 
 def _style(ax) -> None:
@@ -52,7 +54,7 @@ def models(metrics: pd.DataFrame, tests: pd.DataFrame, out: Path) -> None:
     m = m.loc[rungs[::-1]]
     best = m["mae"].idxmin()
     p = tests[tests["vs"] == "0_naive"].set_index("rung")["pvalue"]
-    fig, ax = plt.subplots(figsize=(8.5, 4.6), dpi=200)
+    fig, ax = plt.subplots(figsize=(8.5, 5.6), dpi=200)
     colors = [BLUE if r == best else (INK if r == "0_naive" else GRAY) for r in m.index]
     ax.barh([LABELS.get(r, r) for r in m.index], m["mae"], color=colors, height=0.6)
     for i, (r, row) in enumerate(m.iterrows()):

@@ -83,13 +83,13 @@ def test_rungs_without_data_are_skipped(table):
     assert [r.name for r in available_rungs(feats)] == ["0_naive", "1_ar_season", "5_arima",
                                                            "6_gbm_history", "7_xgb_history",
                                                            "8_rf_history", "9_svm_history",
-                                                           "10_linear_history", "n0_mean",
-                                                           "n_season"]
+                                                           "10_linear_history", "11_gbm_local",
+                                                           "n0_mean", "n_season"]
     with_weather = table.assign(temp_mean_f=40.0, dewpoint_f=30.0, precip_in=0.1)
     names = [r.name for r in available_rungs(features(with_weather))]
     assert names == ["0_naive", "1_ar_season", "2_weather", "5_arima", "6_gbm_history",
                      "7_xgb_history", "8_rf_history", "9_svm_history", "10_linear_history",
-                     "n0_mean", "n_season", "n1_weather"]
+                     "11_gbm_local", "n0_mean", "n_season", "n1_weather"]
 
 
 def test_scoreable_drops_unsettled_weeks_and_unpaired_rows(table):
