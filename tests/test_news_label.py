@@ -282,3 +282,16 @@ def test_missing_api_key_fails_clearly(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
     with pytest.raises(L.MissingAPIKeyError, match="ANTHROPIC_API_KEY"):
         L.make_client()
+
+
+def test_with_catalog_fills_title_outlet_published(tmp_path):
+    from src.news.label import with_catalog
+    manifest = pd.DataFrame({"article_id": ["a", "b"], "page_title": ["Page A", "Page B"],
+                             "page_published": ["2025-01-02", "2025-02-03"]})
+    cat = tmp_path / "articles.csv"
+    pd.DataFrame({"article_id": ["a"], "title": ["Catalog A"], "outlet": ["stlpr.org"],
+                  "published": ["2025-01-01"], "stratum": ["peak"]}).to_csv(cat, index=False)
+    out = with_catalog(manifest, cat).set_index("article_id")
+    assert out.loc["a", "title"] == "Catalog A" and out.loc["a", "outlet"] == "stlpr.org"
+    assert out.loc["b", "title"] == "Page B" and out.loc["b", "published"] == "2025-02-03"
+    assert "stratum" not in out

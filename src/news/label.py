@@ -1,10 +1,12 @@
 """LLM labeler: one structured label per article, with a quote for every field.
 
-Usage, from the repo root (needs ANTHROPIC_API_KEY in the environment):
+Usage, from the repo root. Default backend is a free local model via Ollama
+(``ollama pull qwen3:8b`` once; see ``src/news/ollama_client.py``):
 
     python -m src.news.label                 # label every article in the manifest
     python -m src.news.label --runs 2        # twice, to measure self-consistency
     python -m src.news.label --limit 5       # smoke test on a few articles
+    python -m src.news.label --backend anthropic   # Claude (needs ANTHROPIC_API_KEY)
 
 then ``python -m src.news.ground`` to drop any label whose quote is not in the
 article.
@@ -22,7 +24,7 @@ Design choices, each aimed at the team's main worry (made-up labels):
   available on this model; a JSON schema is the supported way to get the same
   guarantee. The parsed JSON still goes through ``schema.validate_label``,
   because a schema cannot express cross-field rules (relevant => study county).
-* **Determinism.** Claude Opus 5.5 rejects ``temperature`` (sampling is
+* **Determinism.** With Ollama, temperature is 0 with a fixed seed. Claude Opus 5.5 rejects ``temperature`` (sampling is
   fixed server-side), so we cannot force temperature 0. Instead the effort
   level is pinned, and ``--runs 2`` measures how often the model disagrees
   with itself -- an honest number instead of an assumed one.
@@ -54,6 +56,7 @@ __all__ = ["MODEL_ID", "EFFORT", "OUTPUT_SCHEMA", "LABEL_COLUMNS", "MissingAPIKe
 # default Opus: the strongest generally available model short of the much
 # pricier Fable tier, and at 60-200 articles cost is a few dollars at most.
 MODEL_ID = "claude-opus-5-5"
+OLLAMA_MODEL = "qwen3:8b"   # free, local; fits a 16 GB Mac
 # Opus 5.5 defaults to "medium"; pin it so a server-side default change can't
 # silently change our labels. Thinking cannot be disabled on this model.
 EFFORT = "medium"
@@ -198,7 +201,13 @@ def label_article(client, article: dict, text: str, system: str, run: int = 1,
                   model: str = MODEL_ID, phash: str | None = None) -> dict:
     """Label one article; API errors are recorded on the row, not raised,
     except authentication errors, which would fail every article the same way."""
-    import anthropic
+    from src.news.ollama_client import OllamaError
+    try:
+        import anthropic
+        api_errors = (anthropic.APIStatusError, anthropic.APIConnectionError)
+        auth_error = anthropic.AuthenticationError
+    except ImportError:
+        api_errors, auth_error = (), ()
 
     row = {"article_id": str(article["article_id"]), "labeler": "llm", "run": run,
            "model": model, "served_model": None, "prompt_hash": phash or prompt_hash(system),
@@ -207,9 +216,9 @@ def label_article(client, article: dict, text: str, system: str, run: int = 1,
            "input_tokens": None, "cache_read_tokens": None, "output_tokens": None}
     try:
         response = client.messages.create(**build_request(article, text, system, model))
-    except anthropic.AuthenticationError:
+    except auth_error:
         raise
-    except (anthropic.APIStatusError, anthropic.APIConnectionError) as exc:
+    except (*api_errors, OllamaError) as exc:
         return {**row, **_empty_label(), "error": f"api: {type(exc).__name__}: {exc}"}
 
     label, error = parse_response(response)
@@ -281,21 +290,58 @@ def label_corpus(manifest: pd.DataFrame, texts: dict[str, str], client, runs: in
     return result
 
 
+def with_catalog(manifest: pd.DataFrame, catalog=None) -> pd.DataFrame:
+    """Add the title, outlet and publish date the prompt needs.
+
+    The fetch manifest (``raw/news/articles.parquet``) stores the page's own
+    ``page_title`` / ``page_published`` but not the catalog's ``title``,
+    ``outlet`` or ``published``; without this join every article reached the
+    model with those fields blank. Catalog values win, page values fill gaps.
+    Labeler-hidden catalog columns (``stratum``, ``fips_guess``) are not used.
+    """
+    out = manifest.copy()
+    out["article_id"] = out["article_id"].astype(str)
+    if catalog is not None and Path(catalog).exists():
+        cat = pd.read_csv(catalog, dtype={"article_id": str})
+        cat = cat[["article_id", *[c for c in ("title", "outlet", "published") if c in cat]]]
+        out = out.drop(columns=[c for c in ("title", "outlet", "published") if c in out])
+        out = out.merge(cat, on="article_id", how="left")
+    for col, fallback in (("title", "page_title"), ("published", "page_published")):
+        if fallback in out:
+            out[col] = out[col].fillna(out[fallback]) if col in out else out[fallback]
+    return out
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description="Label news articles with the LLM.")
     p.add_argument("--manifest", default="raw/news/articles.parquet")
+    p.add_argument("--catalog", default="labels/articles.csv",
+                   help="article catalog with title / outlet / published")
     p.add_argument("--text-dir", default="raw/news/text")
     p.add_argument("--out", default=str(OUT_PATH))
     p.add_argument("--runs", type=int, default=1, help="label each article N times (self-consistency)")
     p.add_argument("--limit", type=int, default=None, help="only the first N articles")
-    p.add_argument("--model", default=MODEL_ID)
+    p.add_argument("--backend", choices=("ollama", "anthropic"), default="ollama")
+    p.add_argument("--model", default=None,
+                   help=f"default {OLLAMA_MODEL} (ollama) or {MODEL_ID} (anthropic)")
+    p.add_argument("--think", action="store_true", help="ollama: let the model think first")
     args = p.parse_args(argv)
 
-    try:
-        client = make_client()
-    except MissingAPIKeyError as exc:
-        raise SystemExit(f"error: {exc}")
-    manifest = pd.read_parquet(args.manifest)
+    if args.backend == "ollama":
+        from src.news.ollama_client import OllamaClient, OllamaError
+        args.model = args.model or OLLAMA_MODEL
+        client = OllamaClient(think=args.think)
+        try:
+            client.check(args.model)
+        except OllamaError as exc:
+            raise SystemExit(f"error: {exc}")
+    else:
+        args.model = args.model or MODEL_ID
+        try:
+            client = make_client()
+        except MissingAPIKeyError as exc:
+            raise SystemExit(f"error: {exc}")
+    manifest = with_catalog(pd.read_parquet(args.manifest), args.catalog)
     if args.limit:
         manifest = manifest.head(args.limit)
     # Body only: the title is sent in its own tag. Articles without fetched

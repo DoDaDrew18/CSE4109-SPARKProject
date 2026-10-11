@@ -22,11 +22,14 @@ not a weekly series (docs/OVERVIEW.md).
 
 Human labels are the default because the agreement report decides whether
 LLM labels are good enough (src/news/agreement.py); pass ``source="llm"`` to
-use grounded LLM labels once they have earned it.
+use grounded LLM labels once they have earned it. ``src.align --news-source
+llm`` sets the default for a whole table build (``SPARK_NEWS_SOURCE``), so a
+table built on unvalidated LLM labels is always an explicit choice.
 """
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import numpy as np
@@ -85,7 +88,10 @@ def article_table(source: str = "human", labels_path=None, manifest_path=MANIFES
 
     if "published" not in labels or labels["published"].isna().any():
         if Path(manifest_path).exists():
-            man = pd.read_parquet(manifest_path)[["article_id", "published"]]
+            man = pd.read_parquet(manifest_path)
+            if "published" not in man and "page_published" in man:
+                man = man.rename(columns={"page_published": "published"})
+            man = man[["article_id", "published"]]
             man = man.assign(article_id=man["article_id"].astype(str))
             labels = labels.drop(columns=["published"], errors="ignore").merge(man, on="article_id", how="left")
         elif "published" not in labels:
@@ -94,7 +100,7 @@ def article_table(source: str = "human", labels_path=None, manifest_path=MANIFES
     return labels[["article_id", "published", "relevant", "fips", "concern"]].reset_index(drop=True)
 
 
-def weekly_features(as_of, fips=None, labels_path=None, source: str = "human",
+def weekly_features(as_of, fips=None, labels_path=None, source: str | None = None,
                     manifest_path=MANIFEST) -> pd.DataFrame:
     """County-week news features using only articles published on or before ``as_of``.
 
@@ -102,6 +108,7 @@ def weekly_features(as_of, fips=None, labels_path=None, source: str = "human",
     Returns an empty, correctly typed frame when there are no labels yet, so
     downstream joins work before the first article is labeled.
     """
+    source = source or os.environ.get("SPARK_NEWS_SOURCE", "human")
     arts = article_table(source, labels_path, manifest_path)
     if arts.empty:
         return _empty()

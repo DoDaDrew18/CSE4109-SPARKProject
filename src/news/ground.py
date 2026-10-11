@@ -256,7 +256,8 @@ def load_article_texts(article_ids, text_dir="raw/news/text", manifest=None) -> 
     of what was published and quotes from headlines are legitimate."""
     titles = {}
     if manifest is not None and Path(manifest).exists():
-        m = pd.read_parquet(manifest)
+        from src.news.label import with_catalog
+        m = with_catalog(pd.read_parquet(manifest), "labels/articles.csv")
         titles = dict(zip(m["article_id"].astype(str), m["title"].fillna("")))
     texts = {}
     for aid in article_ids:

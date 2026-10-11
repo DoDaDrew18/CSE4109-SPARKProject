@@ -44,6 +44,7 @@ import argparse
 import importlib
 import importlib.util
 import logging
+import os
 from datetime import timedelta
 from pathlib import Path
 
@@ -275,8 +276,15 @@ def main() -> None:
     parser.add_argument("--store", default="raw/snapshots")
     parser.add_argument("--history", type=int, default=DEFAULT_HISTORY)
     parser.add_argument("--out", default=str(OUTPUT))
+    parser.add_argument("--news-source", choices=("human", "llm"), default="human",
+                        help="news labels for news_n / news_concern; llm = grounded "
+                             "LLM labels, before or without human agreement")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    os.environ["SPARK_NEWS_SOURCE"] = args.news_source
+    if args.news_source == "llm":
+        log.warning("news features from LLM labels: validate against human labels "
+                    "(python -m src.news.agreement) before trusting the news rung")
 
     dates = vintage_dates(args.store)
     table = build_county_week(dates, store_root=args.store, history=args.history)
