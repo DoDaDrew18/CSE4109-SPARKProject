@@ -55,21 +55,56 @@ These shaped the design more than anything we planned.
 7. **`as_of` takes an epiweek, not a date.** `as_of=20260215` is silently read
    as a far-future week and returns the *latest* data. The ingester refuses it.
 
-## First results (baselines, no news yet)
+## Results so far (no news yet)
 
-Rolling-origin backtest on the four metros with real-time data, scored against
-final values (`data/results/`, `python -m src.nowcast`). Skill = 1 − MAE / MAE of
-the reference rung.
+Rolling-origin backtest on the four metros with real-time data, 462
+county-weeks from Jun 2024 to Aug 2026, scored against final values
+(`python -m src.nowcast`, then `python -m src.figures` for `demo/fig_*.png`).
+Skill = 1 − MAE / MAE of carrying the last value forward.
 
-| Setting | Best rung | What adding signals did |
-| --- | --- | --- |
-| Official data available (462 county-weeks) | **Carry last value forward** (MAE 0.72) | AR + season, weather, wastewater all *worse* (skill −0.15 to −0.20) |
-| No official data, held-out metro (436) | **Season only** (skill +0.35 vs mean) | Weather slightly worse than season alone (p<0.001) |
+![Models](demo/fig_models.png)
 
-Honest reading: weather looked useful at first (+22%), but that was the time
-of year; it adds nothing beyond season. Wastewater is effectively untested
-until more honest vintages accumulate. News, the actual hypothesis, is next:
-it needs the hand labels.
+| Model | MAE | Skill | Wilcoxon vs carry-forward |
+| --- | --- | --- | --- |
+| Carry last value forward | 0.72 | – | – |
+| Ridge: AR + season (+ weather, + wastewater) | 0.83–0.87 | −15% to −20% | n.s. |
+| ARIMA(2,1,0) on the vintage series | 0.71 | +2% | p < 0.001 |
+| Linear (ridge), US history, same features | 0.78 | −8% | worse, p = 0.001 |
+| **Gradient boosting (HistGBM), US history** (`src/history.py`) | **0.59** | **+19%** | **p < 0.001** |
+| Random forest, US history | 0.59 | +18% | p < 0.001 |
+| XGBoost, US history | 0.60 | +17% | p < 0.001 |
+| SVM (RBF, 10k-row sample), US history | 0.61 | +16% | p < 0.001 |
+
+Every nonlinear model trained on the national history beats carry-forward;
+a linear model on the same data and features loses. The four nonlinear
+models are statistically tied (HistGBM vs RF p = 0.79, vs SVM p = 0.39, vs
+XGBoost p = 0.046, which does not survive correction for multiple
+comparisons). So the gain comes from the national history plus a nonlinear
+fit, not from one particular algorithm. Settings were fixed in advance, not
+tuned on the scored weeks.
+
+The gradient-boosted model learns the week-to-week change from 675 Health
+Service Areas' settled history (CDC `rdmq-nq56`, Oct 2022 →). On each date it
+uses only weeks at least 8 weeks old, and no Missouri before June 2026. It
+beats carry-forward in every metro (+12% Chicago, +17% Indianapolis, +25%
+Louisville, +18% Memphis). That history is today's vintage, so an 8-week-old
+week may still have moved slightly after the date (revision profile: under 2%
+of values move >5% after 8 weeks). The ridge rungs learn from about 150
+local examples, and they lose.
+
+**Ablation** (`data/results/metrics_ablation.csv`): without the season
+harmonics the gain falls to +7%, and without momentum to +14%. Dropping the
+study metros' own HSAs from training changes nothing (+19%, p = 0.58): the
+dynamics transfer from the rest of the country. In the ridge model, weather
+and wastewater add nothing.
+
+**Where it fails:** it lags sharp peak onsets (Chicago Dec 2025, Louisville
+Jan 2025; `demo/fig_timeline_*.png`). That is exactly where a faster signal
+like news would have to help.
+
+**No official data on the date** (Missouri before June 2026; held-out metros):
+the season-only model is best (skill +0.35 vs the mean); weather is slightly
+worse than season alone (p < 0.001).
 
 ## Data
 
@@ -158,6 +193,8 @@ src/fips.py            county name → FIPS (Census reference file)
 src/align.py           county_week table with leak checks
 src/nowcast.py         rolling-origin model ladder
 src/evaluate.py        MAE, R², gap closed, skill, Wilcoxon
+src/history.py         national HSA history → gradient-boosted weekly change
+src/figures.py         demo figures from data/results/
 src/news/              collect, fetch, label (LLM), ground, agreement, baseline, features
 src/spatial/           shapes, hot spots (Gi*, local Moran), map, SaTScan export
 labels/                article catalog + human label template (committed)
@@ -189,6 +226,7 @@ raw/, data/            snapshots, pulls, derived tables (gitignored)
 - [x] Map with Gi* hot spots; SaTScan input export
 - [ ] **Hand-label 60–200 articles** (two labelers on the first 30)
 - [ ] Run the LLM labeler (needs `ANTHROPIC_API_KEY`) and the agreement report
-- [ ] News rung in the ladder; ablation
+- [x] ARIMA, HistGBM, XGBoost, random forest, SVM, linear rungs; ablation
+- [ ] News rung in the ladder (plugs in automatically once `news_*` columns exist)
 - [ ] Decide how to treat Missouri labels before Aug 2025
 - [ ] Natural-language search on the map (Demo II)

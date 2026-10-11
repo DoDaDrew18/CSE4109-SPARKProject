@@ -12,6 +12,10 @@ pytest>=7.4
 
 # Modeling and evaluation
 scipy>=1.11            # Wilcoxon signed-rank; permutation inference in esda
+scikit-learn>=1.5      # gradient boosting on the national history (src/history.py)
+statsmodels>=0.14      # ARIMA rung
+xgboost>=2.0           # XGBoost rung (macOS: brew install libomp)
+matplotlib>=3.8        # demo figures (src/figures.py)
 
 # News: fetching, LLM labeling, sentiment baseline
 trafilatura>=2.0       # article main-text extraction
