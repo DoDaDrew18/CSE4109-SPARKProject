@@ -1,0 +1,3 @@
+article_id,labeler,relevant,fips,illness,concern,event_week,quote,notes,is_example
+EXAMPLE-1,human_a,y,47157,flu|rsv,3,,"Several Memphis hospitals went on diversion Tuesday as emergency rooms filled with flu and RSV patients.",example row - delete before labeling,1
+EXAMPLE-2,human_a,n,other,none,0,,,"national CDC update on a local station, no local numbers - delete before labeling",1

@@ -40,3 +40,8 @@ raw/*
 *.synctex.gz
 *.fls
 *.fdb_latexmk
+
+# Generated demo maps: the national HTML maps are ~2 MB each and rebuildable
+# with `python -m src.spatial.map`; the small St. Louis views and PNGs are kept.
+demo/map.html
+demo/map_latest.html

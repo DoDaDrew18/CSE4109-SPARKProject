@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SPARK · Project Schematic (layers)</title>
+<style>
+  :root {
+    --bg:#0b1020; --panel:#131b31; --line:#26314f; --ink:#e8ecf6; --ink2:#a9b3cc; --ink3:#6f7a96;
+    --c1:#4cc9f0; --c2:#5eead4; --c3:#90be6d; --c4:#f4a261; --c5:#c77dff; --c6:#f472b6; --c7:#ffd166;
+    --guard:#ff5d73; --done:#52d39a;
+    --mono: ui-monospace,"SF Mono",Menlo,monospace; --sans:-apple-system,"Inter","Segoe UI",system-ui,sans-serif;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans); }
+  #page {
+    width:1700px; padding:36px 40px 30px; margin:0 auto;
+    background:
+      radial-gradient(900px 500px at 10% 0%, rgba(76,201,240,.08), transparent 60%),
+      radial-gradient(900px 600px at 95% 100%, rgba(199,125,255,.08), transparent 60%),
+      linear-gradient(rgba(255,255,255,.022) 1px, transparent 1px) 0 0/40px 40px,
+      linear-gradient(90deg, rgba(255,255,255,.022) 1px, transparent 1px) 0 0/40px 40px, var(--bg);
+  }
+  h1 { margin:0; font-size:34px; letter-spacing:-.02em; }
+  h1 span { background:linear-gradient(90deg,var(--c1),var(--c5) 60%,var(--c4)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .sub { color:var(--ink2); font-size:16px; margin:8px 0 0; line-height:1.5; max-width:1250px; }
+  .sub b { color:var(--ink); }
+
+  .top { display:flex; gap:18px; margin:22px 0 26px; }
+  .pill { flex:1; border:1px solid var(--line); border-radius:14px; padding:12px 14px; background:rgba(19,27,49,.7); font-size:13.5px; color:var(--ink2); line-height:1.45; }
+  .pill strong { display:block; font-size:11px; letter-spacing:.14em; text-transform:uppercase; margin-bottom:4px; }
+  .pill.q strong { color:var(--c1); } .pill.r strong { color:var(--guard); } .pill.n strong { color:var(--c7); }
+
+  .layer { display:grid; grid-template-columns:270px 1fr 220px; gap:0; margin-bottom:14px; position:relative;
+           border:1px solid var(--line); border-radius:16px; background:linear-gradient(90deg, color-mix(in srgb, var(--c) 9%, transparent), rgba(19,27,49,.75) 30%); overflow:hidden; }
+  .layer::before { content:""; position:absolute; left:0; top:0; bottom:0; width:5px; background:var(--c); }
+  .layer + .layer::after { content:""; }
+  .name { padding:16px 18px 16px 24px; border-right:1px solid var(--line); }
+  .name .num { font-family:var(--mono); font-size:12px; color:var(--c); font-weight:800; letter-spacing:.1em; }
+  .name h2 { margin:2px 0 6px; font-size:21px; letter-spacing:-.01em; }
+  .name p { margin:0; font-size:13px; color:var(--ink2); line-height:1.4; font-style:italic; }
+
+  .flow { display:flex; align-items:stretch; padding:14px 16px; gap:10px; }
+  .box { flex:1; border:1px solid var(--line); border-radius:12px; padding:9px 11px; background:rgba(0,0,0,.18); font-size:12.8px; line-height:1.45; color:var(--ink2); }
+  .box h4 { margin:0 0 4px; font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3); }
+  .box.do h4 { color:var(--c); }
+  .box b { color:var(--ink); }
+  .box code { font-family:var(--mono); font-size:11.5px; color:var(--ink); background:rgba(255,255,255,.06); padding:0 4px; border-radius:4px; }
+  .box ul { margin:0; padding-left:15px; } .box li { margin:1px 0; }
+  .box.do { border-color:color-mix(in srgb, var(--c) 45%, var(--line)); background:color-mix(in srgb, var(--c) 6%, rgba(0,0,0,.18)); flex:1.15; }
+  .arrow { align-self:center; color:var(--c); font-size:22px; font-weight:300; }
+
+  .when { padding:14px 12px; border-left:1px solid var(--line); font-size:12.5px; color:var(--ink2); line-height:1.45; display:flex; flex-direction:column; gap:7px; }
+  .tag { display:inline-block; font-size:9.5px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; padding:2px 8px; border-radius:999px; width:max-content; }
+  .t-done { color:var(--done); border:1px solid rgba(82,211,154,.5); background:rgba(82,211,154,.1); }
+  .t-week { color:var(--c7); border:1px solid rgba(255,209,102,.5); background:rgba(255,209,102,.1); }
+  .t-stretch { color:var(--ink3); border:1px dashed var(--ink3); }
+  .guard { color:#ffd2d8; font-size:11.5px; border:1px solid rgba(255,93,115,.45); background:rgba(255,93,115,.08); border-radius:8px; padding:4px 7px; }
+
+  .connector { height:0; position:relative; }
+  .connector::after { content:"▼"; position:absolute; left:140px; top:-14px; font-size:12px; color:var(--ink3); }
+
+  .row-schema { display:grid; grid-template-columns:1.25fr 1fr; gap:16px; margin-top:22px; }
+  .schema { border:1px solid var(--line); border-radius:16px; padding:14px 16px; background:rgba(19,27,49,.75); }
+  .schema h3 { margin:0 0 2px; font-size:16px; }
+  .schema .hint { color:var(--ink3); font-size:12.5px; margin-bottom:8px; }
+  table { border-collapse:collapse; width:100%; font-size:12.5px; }
+  td { padding:4px 8px; border-top:1px solid rgba(38,49,79,.6); color:var(--ink2); vertical-align:top; }
+  td:first-child { font-family:var(--mono); color:var(--ink); white-space:nowrap; width:1%; }
+  td .src { font-family:var(--mono); font-size:10.5px; padding:0 6px; border-radius:999px; border:1px solid var(--line); }
+  tr.lbl td:first-child { color:var(--guard); }
+
+  .foot { display:flex; justify-content:space-between; color:var(--ink3); font-size:12px; margin-top:18px; }
+</style>
+</head>
+<body>
+<div id="page">
+  <h1><span>SPARK</span> · What we're building, layer by layer</h1>
+  <p class="sub">A <b>retrospective</b> study: we rebuild the respiratory-illness data <b>exactly as it looked on past dates</b>, then ask, for one date at a time,
+    which signals (<b>weather, wastewater, local news</b>) line up with what ED visits turned out to be. We nowcast <b>today's</b> value; we do not forecast the future.</p>
+
+  <div class="top">
+    <div class="pill q"><strong>Question</strong>On a given past date, do weather and local news help estimate this week's share of respiratory ED visits in a county, beyond the official numbers available that day?</div>
+    <div class="pill r"><strong>One rule</strong>For date D, use only data published on or before D. The final (later-corrected) numbers are the answer key, never an input.</div>
+    <div class="pill n"><strong>Scope</strong>1 home city (<b>St. Louis</b>) + 5 comparison cities. ~2 flu seasons (Apr 2024 →). 60–200 hand-labeled news articles. Demo in 1 week.</div>
+  </div>
+
+  <!-- L1 -->
+  <div class="layer" style="--c:var(--c1)">
+    <div class="name"><div class="num">LAYER 1</div><h2>Collect</h2><p>"What raw data exists, and where do we get it?"</p></div>
+    <div class="flow">
+      <div class="box"><h4>CDC · health</h4><b>NSSP</b> % of ED visits for COVID, flu, RSV per county per week, with revision history.<br><code>Delphi Epidata</code> · no key</div>
+      <div class="box"><h4>CDC · wastewater</h4><b>NWSS</b> viral level per sewer site per week (COVID, flu, RSV). Revised silently; honest vintages from Apr 2026.<br><code>data.cdc.gov atcp-73re</code> · no key</div>
+      <div class="box"><h4>NOAA · weather</h4><b>NCEI daily summaries</b>: max/min temp, precipitation. NCEI humidity stops at 2024, so dew point / humidity come from <b>IEM ASOS</b> (same airport sensors). One station per city.<br>no key</div>
+      <div class="box"><h4>News</h4><b>Web search</b> + <b>GDELT</b> (raw GKG files) to find local articles around past flu peaks. 196 candidates, 82 from St. Louis.<br>text stays local</div>
+    </div>
+    <div class="when"><span class="tag t-done">NSSP · NWSS · NOAA done</span><span class="tag t-done">news: 196 articles</span><span class="tag t-stretch">stretch: EPA air quality</span></div>
+  </div>
+
+  <!-- L2 -->
+  <div class="layer" style="--c:var(--c2)">
+    <div class="name"><div class="num">LAYER 2</div><h2>Reconstruct</h2><p>"What did we actually know on date D?"</p></div>
+    <div class="flow">
+      <div class="box"><h4>In</h4>Every download, stamped with the date it was published (<code>issue</code>).</div>
+      <div class="arrow">→</div>
+      <div class="box do"><h4>Do</h4>Save each download once and never edit it. Ask the store "as of D" and it returns only rows published by then.<br><code>load_vintage(source, D)</code></div>
+      <div class="arrow">→</div>
+      <div class="box"><h4>Out</h4><b>As-of-D view</b> for features + <b>final view</b> for the answer key.</div>
+    </div>
+    <div class="when"><span class="tag t-done">NSSP + NWSS</span><div class="guard">⛔ This is what keeps the study honest.</div></div>
+  </div>
+
+  <!-- L3 -->
+  <div class="layer" style="--c:var(--c3)">
+    <div class="name"><div class="num">LAYER 3</div><h2>Align</h2><p>"One clean table everyone works from."</p></div>
+    <div class="flow">
+      <div class="box"><h4>In</h4>As-of-D health, wastewater, weather, news labels.</div>
+      <div class="arrow">→</div>
+      <div class="box do"><h4>Do</h4>Map everything to <b>county</b> (5-digit FIPS) and <b>week</b> (Sat. week-end). Daily weather → weekly mean. Sewer sites → county. Missing stays blank, never guessed.</div>
+      <div class="arrow">→</div>
+      <div class="box"><h4>Out</h4><b>county_week.parquet</b>: one row per county × week × as-of date (schema below).</div>
+    </div>
+    <div class="when"><span class="tag t-done">done</span>Owner: Andrew<div class="guard">⛔ Raises LeakError on any future row.</div></div>
+  </div>
+
+  <!-- L4 -->
+  <div class="layer" style="--c:var(--c4)">
+    <div class="name"><div class="num">LAYER 4</div><h2>Read the news</h2><p>"Can an LLM label articles as well as we do?"</p></div>
+    <div class="flow">
+      <div class="box"><h4>In</h4>60–200 local articles around past peaks, St. Louis first.</div>
+      <div class="arrow">→</div>
+      <div class="box do"><h4>Do</h4>
+        <ul><li><b>Humans</b> label every article (2 people on the first 30 → agreement)</li>
+            <li><b>LLM</b> labels the same articles; each label must cite a quote, else dropped</li>
+            <li>Label <b>concern level 0–3</b> + illness, not open-ended "sentiment"</li></ul></div>
+      <div class="arrow">→</div>
+      <div class="box"><h4>Out</h4>Article label table + <b>LLM vs. human agreement</b>. If the LLM is worse than human-vs-human, we use human labels only.</div>
+    </div>
+    <div class="when"><span class="tag t-done">guide + LLM tools</span><span class="tag t-week">next: hand labels</span>Owner: Brian<div class="guard">⛔ Hallucination check = quote must exist in the article text.</div></div>
+  </div>
+
+  <!-- L5 -->
+  <div class="layer" style="--c:var(--c5)">
+    <div class="name"><div class="num">LAYER 5</div><h2>Analyze &amp; nowcast</h2><p>"Which signals move with illness, and do they help?"</p></div>
+    <div class="flow">
+      <div class="box"><h4>In</h4>county_week table.</div>
+      <div class="arrow">→</div>
+      <div class="box do"><h4>Do</h4>
+        <ul><li><b>Explore:</b> lagged correlations (weather, wastewater, news vs. ED %)</li>
+            <li><b>Nowcast ladder:</b> last known value → linear model → + weather → + wastewater → + news</li>
+            <li>Train on weeks before D, predict D, step forward</li></ul></div>
+      <div class="arrow">→</div>
+      <div class="box"><h4>Out</h4>Error per rung, % of late-vs-final gap closed, paired test (Wilcoxon): does each added signal help?</div>
+    </div>
+    <div class="when"><span class="tag t-done">baselines done</span><span class="tag t-week">next: + news</span>Owner: Noah</div>
+  </div>
+
+  <!-- L6 -->
+  <div class="layer" style="--c:var(--c6)">
+    <div class="name"><div class="num">LAYER 6</div><h2>Place &amp; generalize</h2><p>"Where is it clustering, and does St. Louis carry over?"</p></div>
+    <div class="flow">
+      <div class="box do"><h4>Map</h4>County choropleth of nowcasts with Census shapes. Hot spots with <b>Getis-Ord Gi*</b> (PySAL), which runs in Python.</div>
+      <div class="box"><h4>SaTScan (stretch)</h4>Desktop program, no web API. Export a CSV, run in batch mode, read back the clusters.</div>
+      <div class="box do"><h4>Generalize</h4>Build on <b>St. Louis</b>, then run unchanged on Kansas City, Chicago, Indianapolis, Memphis, Louisville. Does the same signal help there?</div>
+    </div>
+    <div class="when"><span class="tag t-done">map + Gi* done</span><span class="tag t-done">SaTScan export</span>Owner: Brian</div>
+  </div>
+
+  <!-- schemas -->
+  <div class="row-schema">
+    <div class="schema">
+      <h3>Table 1 · <code style="font-family:var(--mono)">county_week</code> (the only table models read)</h3>
+      <div class="hint">One row = one county, one week, as known on one date D. 23 columns.</div>
+      <table>
+        <tr><td>fips · metro · home</td><td>county (<b>29510</b> STL city, <b>29189</b> STL County …), metro key, home-metro flag</td></tr>
+        <tr><td>week_end · as_of · lag</td><td>Saturday ending the epi week · date D · weeks between them (0 = nowcast target)</td></tr>
+        <tr><td>ed_covid · ed_flu · ed_rsv · ed_resp</td><td>% ED visits as known on D, and their sum <span class="src">CDC NSSP</span></td></tr>
+        <tr><td>ww_covid · ww_flu · ww_rsv · ww_n_sites</td><td>population-weighted site level <span class="src">CDC NWSS</span></td></tr>
+        <tr><td>temp_mean/min/max_f · dewpoint_f</td><td>weekly means <span class="src">NOAA + IEM</span></td></tr>
+        <tr><td>rh_mean · precip_in · n_days</td><td>humidity, weekly rain, days observed <span class="src">NOAA + IEM</span></td></tr>
+        <tr><td>news_n · news_concern</td><td>added once labels exist <span class="src">news</span></td></tr>
+        <tr class="lbl"><td>ed_resp_final · ed_resp_first</td><td>final and first-print values: <b>answer key only</b></td></tr>
+      </table>
+    </div>
+    <div class="schema">
+      <h3>Table 2 · <code style="font-family:var(--mono)">article_labels</code></h3>
+      <div class="hint">One row = one article, one labeler (human or LLM).</div>
+      <table>
+        <tr><td>article_id</td><td>hash of the URL</td></tr>
+        <tr><td>url · outlet · published</td><td>where and when it ran</td></tr>
+        <tr><td>fips</td><td>county the article is about</td></tr>
+        <tr><td>illness</td><td>covid · flu · rsv · general respiratory · none</td></tr>
+        <tr><td>concern</td><td>0 none · 1 mention · 2 rising/warning · 3 surge/strain</td></tr>
+        <tr><td>quote</td><td>exact sentence supporting the label</td></tr>
+        <tr><td>labeler</td><td>human_a · human_b · llm</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="foot"><span>CSE 4109 · Fall 2026 · Aviado · Zhou · Wolk</span><span>Detailed version: docs/pipeline.html · Plan: docs/OVERVIEW.md</span></div>
+</div>
+</body>
+</html>

@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SPARK · County Nowcasting Pipeline</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0b1020;
+    --panel: #121a30;
+    --panel-2: #172140;
+    --line: #26314f;
+    --ink: #e8ecf6;
+    --ink-2: #a9b3cc;
+    --ink-3: #6f7a96;
+
+    --official: #4cc9f0;   /* lane 1: delayed, revised signals */
+    --news: #f4a261;       /* lane 2: local news text */
+    --geo: #90be6d;        /* lane 3: geography / context */
+    --model: #c77dff;      /* merge + modeling */
+    --guard: #ff5d73;      /* leakage guards */
+
+    --done: #52d39a;
+    --next: #ffd166;
+    --planned: #7d8bb0;
+
+    --andrew: #4cc9f0;
+    --noah: #c77dff;
+    --brian: #f4a261;
+
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+    --sans: -apple-system, "Inter", "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); }
+  body { overflow-x: auto; }
+
+  #stage {
+    position: relative;
+    width: 2580px;
+    height: 1630px;
+    transform-origin: 0 0;
+    background:
+      radial-gradient(1200px 600px at 20% 10%, rgba(76,201,240,.07), transparent 60%),
+      radial-gradient(900px 600px at 80% 90%, rgba(199,125,255,.08), transparent 60%),
+      linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px) 0 0 / 40px 40px,
+      linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px) 0 0 / 40px 40px,
+      var(--bg);
+  }
+
+  /* ---------- header ---------- */
+  header { position: absolute; left: 40px; top: 30px; right: 40px; display: flex; justify-content: space-between; align-items: flex-start; }
+  header h1 { margin: 0; font-size: 38px; letter-spacing: -.02em; font-weight: 750; }
+  header h1 span { background: linear-gradient(90deg, var(--official), var(--model) 55%, var(--news)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  header p { margin: 8px 0 0; color: var(--ink-2); font-size: 17px; max-width: 1100px; line-height: 1.45; }
+  header p b { color: var(--ink); }
+  .rule {
+    border: 1px solid rgba(255,93,115,.5); background: rgba(255,93,115,.08);
+    border-radius: 14px; padding: 14px 18px; width: 560px; font-size: 14.5px; line-height: 1.45; color: var(--ink-2);
+  }
+  .rule strong { color: var(--guard); display: block; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; margin-bottom: 4px; }
+  .rule code { color: var(--ink); }
+
+  /* ---------- column headings ---------- */
+  .colhead {
+    position: absolute; top: 172px; width: 250px;
+    font-size: 11.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--ink-3); font-weight: 700;
+  }
+  .colhead i { font-style: normal; color: var(--ink-2); margin-right: 6px; font-family: var(--mono); }
+
+  /* ---------- lanes ---------- */
+  .lane {
+    position: absolute; left: 20px; width: 1420px; border-radius: 22px;
+    border: 1px dashed var(--line);
+  }
+  .lane .tag {
+    position: absolute; left: 18px; top: -12px; padding: 2px 10px; border-radius: 999px;
+    font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; background: var(--bg);
+  }
+  .lane.official { top: 200px; height: 540px; border-color: rgba(76,201,240,.28); background: rgba(76,201,240,.025); }
+  .lane.official .tag { color: var(--official); border: 1px solid rgba(76,201,240,.4); }
+  .lane.news { top: 770px; height: 430px; border-color: rgba(244,162,97,.3); background: rgba(244,162,97,.025); }
+  .lane.news .tag { color: var(--news); border: 1px solid rgba(244,162,97,.45); }
+  .lane.geo { top: 1230px; height: 300px; border-color: rgba(144,190,109,.3); background: rgba(144,190,109,.025); }
+  .lane.geo .tag { color: var(--geo); border: 1px solid rgba(144,190,109,.45); }
+  .lane.merge {
+    left: 1460px; width: 1100px; top: 200px; height: 1330px;
+    border-color: rgba(199,125,255,.3); background: rgba(199,125,255,.03);
+  }
+  .lane.merge .tag { color: var(--model); border: 1px solid rgba(199,125,255,.45); }
+
+  /* ---------- cards ---------- */
+  .card {
+    position: absolute; width: 250px;
+    background: linear-gradient(180deg, var(--panel-2), var(--panel));
+    border: 1px solid var(--line); border-radius: 14px;
+    padding: 12px 13px 12px; font-size: 12.5px; line-height: 1.4;
+    box-shadow: 0 10px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.04);
+    z-index: 2;
+  }
+  .card::before {
+    content: ""; position: absolute; left: -1px; top: 14px; bottom: 14px; width: 3px; border-radius: 3px;
+    background: var(--accent, var(--ink-3));
+  }
+  .card.src { --accent: var(--ink-3); background: linear-gradient(180deg, #141b2e, #10172a); }
+  .card.official { --accent: var(--official); }
+  .card.news { --accent: var(--news); }
+  .card.geo { --accent: var(--geo); }
+  .card.model { --accent: var(--model); }
+  .card.deferred { opacity: .55; border-style: dashed; }
+  .card.wide { width: 530px; }
+
+  .card h3 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -.01em; display: flex; align-items: center; gap: 7px; }
+  .card h3 .n {
+    font-family: var(--mono); font-size: 11px; color: var(--bg); background: var(--accent, var(--ink-3));
+    border-radius: 6px; padding: 1px 5px; font-weight: 800;
+  }
+  .meta { display: flex; justify-content: space-between; align-items: center; margin: 5px 0 8px; gap: 6px; }
+  .path { font-family: var(--mono); font-size: 11px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .status { font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; white-space: nowrap; }
+  .status.done { color: var(--done); background: rgba(82,211,154,.12); border: 1px solid rgba(82,211,154,.4); }
+  .status.next { color: var(--next); background: rgba(255,209,102,.12); border: 1px solid rgba(255,209,102,.4); }
+  .status.planned { color: var(--planned); background: rgba(125,139,176,.12); border: 1px solid rgba(125,139,176,.35); }
+  .status.deferred { color: var(--ink-3); border: 1px dashed var(--ink-3); }
+
+  .owner { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; color: var(--ink-2); white-space: nowrap; }
+  .owner::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); }
+  .owner.a { --c: var(--andrew); } .owner.n { --c: var(--noah); } .owner.b { --c: var(--brian); }
+
+  .io { margin-top: 6px; display: grid; grid-template-columns: 34px 1fr; gap: 3px 6px; align-items: start; }
+  .io > b { font-size: 9.5px; letter-spacing: .1em; font-weight: 800; padding-top: 2px; }
+  .io > b.in { color: var(--ink-3); }
+  .io > b.out { color: var(--accent); }
+  .io > div { color: var(--ink-2); }
+  .io code, .card code { font-family: var(--mono); font-size: 11px; color: var(--ink); background: rgba(255,255,255,.05); padding: 0 3px; border-radius: 4px; }
+  .io ul { margin: 0; padding-left: 13px; }
+  .io li { margin: 1px 0; }
+  .schema { margin-top: 3px; font-family: var(--mono); font-size: 10.5px; color: var(--ink-2); background: rgba(0,0,0,.25); border: 1px solid var(--line); border-radius: 8px; padding: 5px 7px; line-height: 1.5; }
+  .schema .k { color: var(--accent); }
+  .note { margin-top: 7px; color: var(--ink-3); font-size: 11.5px; }
+
+  .guard {
+    margin-top: 8px; font-size: 11px; color: #ffd2d8; background: rgba(255,93,115,.1);
+    border: 1px solid rgba(255,93,115,.45); border-radius: 8px; padding: 4px 7px 4px 24px; position: relative;
+  }
+  .guard::before { content: "⛔"; position: absolute; left: 6px; top: 3px; font-size: 11px; }
+
+  .tiny-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .tiny-tags span { font-family: var(--mono); font-size: 10px; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-2); }
+
+  /* model ladder */
+  .ladder { display: grid; gap: 4px; margin-top: 4px; }
+  .ladder div { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink-2); }
+  .ladder div i { font-style: normal; font-family: var(--mono); font-size: 10px; color: var(--bg); background: var(--model); border-radius: 4px; padding: 0 4px; opacity: var(--o, 1); }
+
+  /* ---------- vintage inset ---------- */
+  .inset {
+    position: absolute; left: 600px; top: 1250px; width: 820px; height: 260px; z-index: 2;
+    border: 1px solid var(--line); background: rgba(10,14,28,.85); border-radius: 16px; padding: 14px 16px;
+  }
+  .inset h4 { margin: 0 0 2px; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--official); }
+  .inset p { margin: 0; font-size: 12px; color: var(--ink-2); }
+
+  /* ---------- legend ---------- */
+  .legend {
+    position: absolute; left: 40px; right: 40px; top: 1558px; display: flex; gap: 34px; align-items: center;
+    font-size: 12.5px; color: var(--ink-2); flex-wrap: wrap;
+  }
+  .legend .grp { display: flex; gap: 12px; align-items: center; }
+  .legend .grp > b { color: var(--ink-3); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; }
+  .swatch { display: inline-block; width: 26px; height: 0; border-top: 2.5px solid var(--c); vertical-align: middle; margin-right: 4px; }
+  .swatch.dash { border-top-style: dashed; }
+
+  /* ---------- wires ---------- */
+  svg#wires { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; overflow: visible; }
+  .wire { fill: none; stroke-width: 2.2; opacity: .85; }
+  .wire.flow { stroke-dasharray: 6 8; animation: flow 1.4s linear infinite; }
+  .wire.gate { stroke-dasharray: 3 6; opacity: .55; stroke-width: 1.6; }
+  .wire-label { font-family: var(--mono); font-size: 10.5px; fill: var(--ink-2); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; }
+  @keyframes flow { to { stroke-dashoffset: -28; } }
+  @media (prefers-reduced-motion: reduce) { .wire.flow { animation: none; } }
+  @media print { .wire.flow { animation: none; } }
+</style>
+</head>
+<body>
+<div id="stage">
+
+  <!-- ================= HEADER ================= -->
+  <header>
+    <div>
+      <h1><span>SPARK</span> · County-Level Respiratory Nowcasting Pipeline</h1>
+      <p>Can LLM-extracted facts from <b>local news</b> improve county nowcasts of the <b>% of ED visits that are respiratory</b>
+        when the model sees only the <b>delayed, still-revising</b> official numbers? Every box lists what goes <b>in</b> and what comes <b>out</b>.</p>
+    </div>
+    <div class="rule">
+      <strong>The one rule · no time travel</strong>
+      Every feature row for prediction date <code>D</code> is built only from what was <em>published</em> on or before <code>D</code>:
+      official data through <code>load_vintage(source, D)</code>, news only if <code>published ≤ D</code>.
+      Labels come from the final (latest) vintage and are used <em>only</em> for scoring. Red ⛔ boxes mark where this is enforced.
+    </div>
+  </header>
+
+  <!-- ================= COLUMN HEADS ================= -->
+  <div class="colhead" style="left:40px"><i>01</i>Sources</div>
+  <div class="colhead" style="left:320px"><i>02</i>Ingest</div>
+  <div class="colhead" style="left:600px"><i>03</i>Store / Extract</div>
+  <div class="colhead" style="left:880px"><i>04</i>Point-in-time view</div>
+  <div class="colhead" style="left:1160px"><i>05</i>Features as of D</div>
+  <div class="colhead" style="left:1480px"><i>06</i>Align</div>
+  <div class="colhead" style="left:1760px"><i>07</i>Model</div>
+  <div class="colhead" style="left:2040px"><i>08</i>Evaluate</div>
+  <div class="colhead" style="left:2320px"><i>09</i>Ship</div>
+
+  <!-- ================= LANES ================= -->
+  <div class="lane official"><span class="tag">Lane A · Official signals — slow &amp; revised</span></div>
+  <div class="lane news"><span class="tag">Lane B · Local news — fast &amp; unstructured</span></div>
+  <div class="lane geo"><span class="tag">Lane C · Geography &amp; context</span></div>
+  <div class="lane merge"><span class="tag">Merge · model · evaluate · ship</span></div>
+
+  <svg id="wires">
+    <defs>
+      <marker id="ah-official" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4cc9f0"/></marker>
+      <marker id="ah-news" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#f4a261"/></marker>
+      <marker id="ah-geo" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#90be6d"/></marker>
+      <marker id="ah-model" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#c77dff"/></marker>
+      <marker id="ah-guard" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#ff5d73"/></marker>
+    </defs>
+  </svg>
+
+  <!-- ================= LANE A: OFFICIAL ================= -->
+  <div class="card src" id="s-nssp" style="left:40px; top:225px">
+    <h3>CDC NSSP</h3>
+    <div class="meta"><span class="path">Delphi Epidata API · no key</span><span class="status done">live</span></div>
+    <div class="io">
+      <b class="out">GIVES</b><div>Weekly <b>% of ED visits</b> for COVID, flu, RSV · ~2,400 counties · full <b>revision history</b> (first prints from epiweek <code>202416</code>)</div>
+    </div>
+    <div class="note">Combined-respiratory signal discontinued at <code>202439</code>.</div>
+  </div>
+
+  <div class="card src" id="s-nwss" style="left:40px; top:545px">
+    <h3>CDC NWSS wastewater</h3>
+    <div class="meta"><span class="path">data.cdc.gov · atcp-73re</span><span class="status next">next</span></div>
+    <div class="io">
+      <b class="out">GIVES</b><div>Viral concentration per <b>sewershed</b> sample · early warning independent of care-seeking</div>
+    </div>
+  </div>
+
+  <div class="card official" id="c-ingest-nssp" style="left:320px; top:225px">
+    <h3><span class="n">A1</span>Ingest NSSP</h3>
+    <div class="meta"><span class="path">src/ingest_nssp.py</span><span class="status done">done</span></div>
+    <div class="io">
+      <b class="in">IN</b><div>signal ∈ {covid, influenza, rsv} · <code>time_range</code> · <code>as_of</code> epiweek (or today)</div>
+      <b class="out">OUT</b><div>one frame per signal
+        <div class="schema"><span class="k">geo_value</span> FIPS5 · <span class="k">time_value</span> week<br><span class="k">value</span> % ED · <span class="k">issue</span> pub. date</div></div>
+    </div>
+    <div class="guard"><code>as_of=20260215</code> silently returns <em>latest</em> data — ingester refuses calendar dates</div>
+    <div class="owner a" style="margin-top:8px">Andrew</div>
+  </div>
+
+  <div class="card official" id="c-ingest-nwss" style="left:320px; top:545px">
+    <h3><span class="n">A2</span>Ingest NWSS</h3>
+    <div class="meta"><span class="path">src/ingest_nwss.py</span><span class="status next">next</span></div>
+    <div class="io">
+      <b class="in">IN</b><div>sewershed samples + sewershed→county map</div>
+      <b class="out">OUT</b><div>same 4-column contract, county-week, stamped with <code>issue</code></div>
+    </div>
+    <div class="owner a" style="margin-top:8px">Andrew</div>
+  </div>
+
+  <div class="card official" id="c-store" style="left:600px; top:225px">
+    <h3><span class="n">A3</span>Snapshot store</h3>
+    <div class="meta"><span class="path">src/snapshot.py</span><span class="status done">done</span></div>
+    <div class="io">
+      <b class="in">IN</b><div>frames from A1 / A2, one write per (source, issue date)</div>
+      <b class="out">OUT</b><div>append-only parquet
+        <div class="schema">raw/snapshots/<span class="k">{source}</span>/<br>&nbsp;&nbsp;issue=<span class="k">YYYY-MM-DD</span>.parquet</div></div>
+    </div>
+    <div class="tiny-tags"><span>nssp_covid</span><span>nssp_influenza</span><span>nssp_rsv</span><span>nwss_*</span></div>
+    <div class="note">Never edited. Corrections = new issue date. Weekly cron: <code>python -m src.ingest_nssp</code>. Data lives in Box, not git.</div>
+    <div class="owner a" style="margin-top:6px">Andrew</div>
+  </div>
+
+  <div class="card official" id="c-vintage" style="left:880px; top:225px">
+    <h3><span class="n">A4</span>Vintage loader</h3>
+    <div class="meta"><span class="path">SnapshotStore.load_vintage</span><span class="status done">done</span></div>
+    <div class="io">
+      <b class="in">IN</b><div><code>source</code>, prediction date <code>D</code></div>
+      <b class="out">OUT</b><div>"what we knew on D": for each (county, week) the latest row with <code>issue ≤ D</code>; unpublished weeks absent</div>
+    </div>
+    <div class="guard">Only door into training data. <code>latest_vintage</code> is for plots &amp; final labels, never features.</div>
+    <div class="owner a" style="margin-top:8px">Andrew</div>
+  </div>
+
+  <div class="card official" id="c-official-feat" style="left:1160px; top:225px">
+    <h3><span class="n">A5</span>Official features</h3>
+    <div class="meta"><span class="path">src/features.py</span><span class="status planned">planned</span></div>
+    <div class="io">
+      <b class="in">IN</b><div>vintages of covid, flu, RSV, NWSS at D</div>
+      <b class="out">OUT</b><div>per (county, D):
+        <ul><li>combined resp % (covid+flu+RSV)</li><li>lags t-1…t-k as known at D</li><li>wastewater level &amp; slope</li><li>reporting-lag gap (weeks missing)</li></ul></div>
+    </div>
+    <div class="owner a" style="margin-top:6px">Andrew</div>
+  </div>
+
+  <div class="card official" id="c-label" style="left:1160px; top:525px">
+    <h3><span class="n">A6</span>Final labels</h3>
+    <div class="meta"><span class="path">latest_vintage</span><span class="status planned">planned</span></div>
+    <div class="io">
+      <b class="in">IN</b><div>latest issue of each county-week</div>
+      <b class="out">OUT</b><div><code>y_final</code> (truth) + <code>y_first</code> (first print) per county-week</div>
+    </div>
+    <div class="guard">Scoring only — never joined into features</div>
+  </div>
+
+  <!-- ================= LANE B: NEWS ================= -->
+  <div class="card src" id="s-gdelt" style="left:40px; top:795px">
+    <h3>GDELT</h3>
+    <div class="meta"><span class="path">DOC API · no key</span><span class="status planned">after counties</span></div>
+    <div class="io">
+      <b class="out">GIVES</b><div>Local news URLs, outlet, publish time, article text. <b>No county tag</b>.</div>
+    </div>
+  </div>
+
+  <div class="card news" id="c-gdelt-pull" style="left:320px; top:795px">
+    <h3><span class="n">B1</span>Article pull</h3>
+    <div class="meta"><span class="path">src/ingest_gdelt.py</span><span class="status planned">planned</span></div>
+    <div class="io">
+      <b class="in">IN</b><div>study counties (C1) · outlet/place keywords · illness terms · date window</div>
+      <b class="out">OUT</b><div>
+        <div class="schema"><span class="k">article_id</span> · url · outlet<br><span class="k">published</span> · title · text</div></div>
+    </div>
+    <div class="note">Deduped; stored under raw/gdelt/ by pull date.</div>
+    <div class="owner a" style="margin-top:6px">Andrew</div>
+  </div>
+
+  <div class="card news" id="c-extract" style="left:600px; top:795px">
+    <h3><span class="n">B2</span>LLM extract · pass 1</h3>
+    <div class="meta"><span class="path">src/extract.py</span><span class="status planned">planned</span></div>
+    <div class="io">
+      <b class="in">IN</b><div>one article (text + metadata)</div>
+      <b class="out">OUT</b><div>0..n event records
+        <div class="schema"><span class="k">county_fips</span> (inferred)<br><span class="k">illness</span> covid|flu|rsv|resp<br><span class="k">severity</span> 0–3 · <span class="k">event_date</span><br><span class="k">quote</span> supporting span</div></div>
+    </div>
+    <div class="owner b" style="margin-top:8px">Brian</div>
+  </div>
+
+  <div class="card news" id="c-verify" style="left:880px; top:795px">
+    <h3><span class="n">B3</span>Grounding check · pass 2</h3>
+    <div class="meta"><span class="path">src/verify.py</span><span class="status planned">planned</span></div>
+    <div class="io">
+      <b class="in">IN</b><div>record + source article</div>
+      <b class="out">OUT</b><div>each field checked against a <b>direct quote</b>; ungrounded fields → dropped
+        <div class="schema">data/news_events.parquet<br>+ <span class="k">grounded</span> flags per field</div></div>
+    </div>
+    <div class="owner b" style="margin-top:8px">Brian</div>
+  </div>
+
+  <div class="card news" id="c-news-feat" style="left:1160px; top:795px">
+    <h3><span class="n">B4</span>News features</h3>
+    <div class="meta"><span class="path">src/features.py</span><span class="status planned">planned</span></div>
+    <div class="io">
+      <b class="in">IN</b><div>grounded events, date <code>D</code></div>
+      <b class="out">OUT</b><div>per (county, D):
+        <ul><li>article &amp; event counts</li><li>mean / max severity</li><li>illness mix</li><li>novelty vs. trailing 4 wks</li></ul></div>
+    </div>
+    <div class="guard">Article must be <code>published ≤ D</code></div>
+    <div class="owner b" style="margin-top:6px">Brian</div>
+  </div>
+
+  <div class="card news" id="c-handcheck" style="left:880px; top:1080px">
+    <h3><span class="n">B5</span>Hand-check sample</h3>
+    <div class="meta"><span class="path">notebooks/</span><span class="status planned">planned</span></div>
+    <div class="io">
+      <b class="in">IN</b><div>50–80 articles, weighted to <b>inferred county</b></div>
+      <b class="out">OUT</b><div>gold labels → precision / recall</div>
+    </div>
+  </div>
+
+  <!-- ================= LANE C: GEO ================= -->
+  <div class="card src" id="s-census" style="left:40px; top:1255px">
+    <h3>Census county shapes</h3>
+    <div class="meta"><span class="path">static file · FIPS5</span><span class="status planned">for map</span></div>
+    <div class="io"><b class="out">GIVES</b><div>Boundaries + population</div></div>
+  </div>
+
+  <div class="card src deferred" id="s-env" style="left:40px; top:1390px">
+    <h3>EPA AirNow · NOAA</h3>
+    <div class="meta"><span class="path">free key / token</span><span class="status deferred">post Demo I</span></div>
+    <div class="io"><b class="out">GIVES</b><div>PM2.5, ozone, temp, humidity</div></div>
+  </div>
+
+  <div class="card geo" id="c-counties" style="left:320px; top:1255px">
+    <h3><span class="n">C1</span>Pick study counties</h3>
+    <div class="meta"><span class="path">data/study_counties.csv</span><span class="status next">next</span></div>
+    <div class="io">
+      <b class="in">IN</b><div>population · NSSP coverage · news volume</div>
+      <b class="out">OUT</b><div><b>50–100</b> FIPS + population tier (small / mid / large)</div>
+    </div>
+    <div class="note">Gates B1, A5/B4 and grouping in 08.</div>
+    <div class="owner a" style="margin-top:6px">Andrew</div>
+  </div>
+
+  <div class="inset" id="inset">
+    <h4>Why vintages · one county-week, many truths</h4>
+    <p>Same reference week, published again and again. Models must use the value on the date they predict, not the final one. At the Jan 2026 flu peak, 19% of counties' first prints were revised by ≥10%.</p>
+    <svg width="790" height="180" viewBox="0 0 790 180" style="margin-top:6px">
+      <!-- axes -->
+      <line x1="60" y1="150" x2="770" y2="150" stroke="#26314f"/>
+      <line x1="60" y1="20" x2="60" y2="150" stroke="#26314f"/>
+      <text x="415" y="172" fill="#6f7a96" font-size="11" text-anchor="middle" font-family="ui-monospace,Menlo,monospace">issue date (when it was published) →</text>
+      <text x="16" y="88" fill="#6f7a96" font-size="11" text-anchor="middle" transform="rotate(-90 16 88)" font-family="ui-monospace,Menlo,monospace">% ED visits</text>
+      <!-- final line -->
+      <line x1="60" y1="40" x2="770" y2="40" stroke="#c77dff" stroke-dasharray="4 5" opacity=".7"/>
+      <text x="765" y="33" fill="#c77dff" font-size="11" text-anchor="end" font-family="ui-monospace,Menlo,monospace">final value (y_final) — scoring only</text>
+      <!-- revisions -->
+      <polyline points="140,122 230,92 320,72 410,58 500,50 590,45 680,42 770,41" fill="none" stroke="#4cc9f0" stroke-width="2.5"/>
+      <g fill="#4cc9f0">
+        <circle cx="140" cy="122" r="5.5"/><circle cx="230" cy="92" r="4"/><circle cx="320" cy="72" r="4"/>
+        <circle cx="410" cy="58" r="4"/><circle cx="500" cy="50" r="4"/><circle cx="590" cy="45" r="4"/><circle cx="680" cy="42" r="4"/>
+      </g>
+      <text x="150" y="140" fill="#4cc9f0" font-size="11" font-family="ui-monospace,Menlo,monospace">first print (y_first)</text>
+      <!-- reporting lag -->
+      <line x1="60" y1="150" x2="140" y2="150" stroke="#ffd166" stroke-width="4"/>
+      <text x="100" y="140" fill="#ffd166" font-size="10.5" text-anchor="middle" font-family="ui-monospace,Menlo,monospace">lag</text>
+      <!-- D marker -->
+      <line x1="320" y1="20" x2="320" y2="150" stroke="#ff5d73" stroke-width="1.5"/>
+      <rect x="282" y="10" width="76" height="18" rx="9" fill="#ff5d73"/>
+      <text x="320" y="23" fill="#0b1020" font-size="11" font-weight="700" text-anchor="middle" font-family="ui-monospace,Menlo,monospace">date D</text>
+      <text x="330" y="88" fill="#e8ecf6" font-size="11" font-family="ui-monospace,Menlo,monospace">← load_vintage(src, D) sees this</text>
+      <rect x="320" y="20" width="450" height="130" fill="#ff5d73" opacity=".05"/>
+      <text x="545" y="140" fill="#ff5d73" font-size="11" text-anchor="middle" opacity=".85" font-family="ui-monospace,Menlo,monospace">invisible at D — using it = leakage</text>
+      <!-- gap arrow -->
+      <line x1="300" y1="74" x2="300" y2="44" stroke="#a9b3cc" stroke-width="1.2" marker-end="url(#ah-model)"/>
+      <text x="294" y="62" fill="#a9b3cc" font-size="10.5" text-anchor="end" font-family="ui-monospace,Menlo,monospace">gap the nowcast must close</text>
+    </svg>
+  </div>
+
+  <!-- ================= MERGE / MODEL / EVAL / SHIP ================= -->
+  <div class="card model" id="c-align" style="left:1480px; top:520px">
+    <h3><span class="n">M1</span>Aligned county-week table</h3>
+    <div class="meta"><span class="path">data/training_table.parquet</span><span class="status next">next</span></div>
+    <div class="io">
+      <b class="in">IN</b><div>A5 + B4 (+ env later), keyed on C1 counties; labels from A6</div>
+      <b class="out">OUT</b><div>one row per prediction
+        <div class="schema"><span class="k">fips</span> · <span class="k">target_week</span> · <span class="k">as_of D</span><br>X_official · X_news · X_env<br><span class="k">y_final</span> · y_first · pop_tier</div></div>
+    </div>
+    <div class="note">Backtest window starts Apr 2024 (epiweek 202416); archive holes flagged, not filled.</div>
+    <div class="owner a" style="margin-top:6px">Andrew</div>
+  </div>
+
+  <div class="card model" id="c-splits" style="left:1480px; top:960px">
+    <h3><span class="n">M2</span>Rolling-origin splits</h3>
+    <div class="meta"><span class="path">src/backtest.py</span><span class="status planned">planned</span></div>
+    <div class="io">
+      <b class="in">IN</b><div>aligned table</div>
+      <b class="out">OUT</b><div>folds: train on weeks &lt; D, predict D, roll forward 1 week</div>
+    </div>
+    <div class="guard">No future rows in any training fold</div>
+    <div class="owner n" style="margin-top:8px">Noah</div>
+  </div>
+
+  <div class="card model" id="c-models" style="left:1760px; top:520px">
+    <h3><span class="n">M3</span>Nowcasting models</h3>
+    <div class="meta"><span class="path">src/models/</span><span class="status planned">planned</span></div>
+    <div class="io">
+      <b class="in">IN</b><div>folds from M2</div>
+      <b class="out">OUT</b><div>ŷ per (county, week, model)</div>
+    </div>
+    <div class="ladder">
+      <div><i>0</i>Naive: carry last first print</div>
+      <div><i>1</i>Linear reg. on lagged official</div>
+      <div><i>2</i>SARIMA</div>
+      <div><i>3</i>Gradient boosting</div>
+      <div><i style="background:var(--news)">4</i><b style="color:var(--ink)">GBM + news features</b></div>
+    </div>
+    <div class="note">The question: does rung 4 beat rung 3?</div>
+    <div class="owner n" style="margin-top:6px">Noah</div>
+  </div>
+
+  <div class="card model" id="c-ablate" style="left:1760px; top:960px">
+    <h3><span class="n">M4</span>Ablation</h3>
+    <div class="meta"><span class="path">src/ablate.py</span><span class="status planned">planned</span></div>
+    <div class="io">
+      <b class="in">IN</b><div>best model + feature groups</div>
+      <b class="out">OUT</b><div>Δ error when dropping one source: −news, −wastewater, −env</div>
+    </div>
+    <div class="owner n" style="margin-top:8px">Noah</div>
+  </div>
+
+  <div class="card model" id="c-eval" style="left:2040px; top:520px">
+    <h3><span class="n">E1</span>Nowcast evaluation</h3>
+    <div class="meta"><span class="path">src/evaluate.py</span><span class="status planned">planned</span></div>
+    <div class="io">
+      <b class="in">IN</b><div>ŷ, y_final, y_first, pop_tier</div>
+      <b class="out">OUT</b><div>
+        <ul><li><b>R²</b> vs y_final</li><li><b>gap closed</b> = 1 − |ŷ−y_final| / |y_first−y_final|</li><li><b>Wilcoxon</b> signed-rank on paired weekly errors (news vs. no-news)</li><li>all grouped by population tier</li></ul></div>
+    </div>
+    <div class="owner n" style="margin-top:6px">Noah</div>
+  </div>
+
+  <div class="card model" id="c-ext-eval" style="left:2040px; top:960px">
+    <h3><span class="n">E2</span>Extraction evaluation</h3>
+    <div class="meta"><span class="path">notebooks/</span><span class="status planned">planned</span></div>
+    <div class="io">
+      <b class="in">IN</b><div>B3 grounding rates · B5 gold labels</div>
+      <b class="out">OUT</b><div>% fields grounded · precision / recall per field, esp. inferred county</div>
+    </div>
+    <div class="owner b" style="margin-top:8px">Brian</div>
+  </div>
+
+  <div class="card model" id="c-report" style="left:2320px; top:520px">
+    <h3><span class="n">S1</span>Results &amp; report</h3>
+    <div class="meta"><span class="path">paper / slides</span><span class="status planned">final</span></div>
+    <div class="io">
+      <b class="in">IN</b><div>E1, E2, M4 tables</div>
+      <b class="out">OUT</b><div>Answer: does news help? (A null result is still a result.)</div>
+    </div>
+    <div class="owner n" style="margin-top:8px">Noah</div>
+  </div>
+
+  <div class="card model" id="c-map" style="left:2320px; top:960px">
+    <h3><span class="n">S2</span>Map + NL search</h3>
+    <div class="meta"><span class="path">app/</span><span class="status planned">Demo I / II</span></div>
+    <div class="io">
+      <b class="in">IN</b><div>county shapes · nowcasts · grounded events with quotes</div>
+      <b class="out">OUT</b><div>interactive choropleth; "where is flu rising?" → counties + cited articles</div>
+    </div>
+    <div class="owner b" style="margin-top:8px">Brian</div>
+  </div>
+
+  <!-- ================= LEGEND ================= -->
+  <div class="legend">
+    <div class="grp"><b>Flow</b>
+      <span><span class="swatch" style="--c:var(--official)"></span>official</span>
+      <span><span class="swatch" style="--c:var(--news)"></span>news</span>
+      <span><span class="swatch" style="--c:var(--geo)"></span>geography</span>
+      <span><span class="swatch" style="--c:var(--model)"></span>model/eval</span>
+      <span><span class="swatch dash" style="--c:var(--ink-3)"></span>gate / config</span>
+    </div>
+    <div class="grp"><b>Status</b>
+      <span class="status done">done</span><span class="status next">next</span><span class="status planned">planned</span><span class="status deferred">deferred</span>
+    </div>
+    <div class="grp"><b>Owner</b>
+      <span class="owner a">Andrew · data</span><span class="owner n">Noah · ML</span><span class="owner b">Brian · LLM &amp; demo</span>
+    </div>
+    <div class="grp" style="margin-left:auto; color:var(--ink-3)">CSE 4109 · Fall 2026 · Aviado · Zhou · Wolk</div>
+  </div>
+</div>
+
+<script>
+  // [from, to, color, kind, fromSide, toSide, label]
+  const WIRES = [
+    ["s-nssp", "c-ingest-nssp", "official", "flow"],
+    ["s-nwss", "c-ingest-nwss", "official", "flow"],
+    ["c-ingest-nssp", "c-store", "official", "flow"],
+    ["c-ingest-nwss", "c-store", "official", "flow"],
+    ["c-store", "c-vintage", "official", "flow"],
+    ["c-vintage", "c-official-feat", "official", "flow", "r", "l", "vintage @ D"],
+    ["c-store", "c-label", "official", "flow", "b", "l", "latest"],
+    ["c-official-feat", "c-align", "official", "flow", "r", "l", "X_official"],
+    ["c-label", "c-align", "guard", "flow", "r", "l", "labels"],
+
+    ["s-gdelt", "c-gdelt-pull", "news", "flow"],
+    ["c-gdelt-pull", "c-extract", "news", "flow"],
+    ["c-extract", "c-verify", "news", "flow"],
+    ["c-verify", "c-news-feat", "news", "flow"],
+    ["c-verify", "c-handcheck", "news", "gate", "b", "t"],
+    ["c-news-feat", "c-align", "news", "flow", "r", "l", "X_news"],
+
+    ["s-census", "c-counties", "geo", "flow"],
+    ["c-counties", "c-gdelt-pull", "geo", "gate", "t", "b", "county list"],
+    ["c-counties", "c-ingest-nssp", "geo", "gate", "r", "l"],
+    ["s-env", "c-align", "geo", "gate", "r", "b", "X_env (later)"],
+
+    ["c-align", "c-splits", "model", "flow", "b", "t"],
+    ["c-splits", "c-models", "model", "flow", "r", "l"],
+    ["c-models", "c-ablate", "model", "flow", "b", "t"],
+    ["c-models", "c-eval", "model", "flow", "r", "l", "ŷ"],
+    ["c-ablate", "c-report", "model", "flow", "r", "b"],
+    ["c-eval", "c-report", "model", "flow", "r", "l"],
+    ["c-verify", "c-ext-eval", "news", "gate", "b", "l"],
+    ["c-handcheck", "c-ext-eval", "news", "flow", "r", "l", "gold labels"],
+    ["c-ext-eval", "c-report", "model", "gate", "r", "b"],
+    ["c-models", "c-map", "model", "gate", "r", "l", "nowcasts"],
+    ["s-census", "c-map", "geo", "gate", "b", "b", "shapes"],
+  ];
+  const COLORS = { official:"#4cc9f0", news:"#f4a261", geo:"#90be6d", model:"#c77dff", guard:"#ff5d73" };
+
+  const stage = document.getElementById("stage");
+  const svg = document.getElementById("wires");
+
+  function anchor(el, side) {
+    const x = el.offsetLeft, y = el.offsetTop, w = el.offsetWidth, h = el.offsetHeight;
+    return { r:[x+w, y+h/2], l:[x, y+h/2], t:[x+w/2, y], b:[x+w/2, y+h] }[side];
+  }
+  const DIR = { r:[1,0], l:[-1,0], t:[0,-1], b:[0,1] };
+
+  function draw() {
+    svg.querySelectorAll(".wire, .wire-label").forEach(n => n.remove());
+    for (const [a, b, color, kind, fs = "r", ts = "l", label] of WIRES) {
+      const A = document.getElementById(a), B = document.getElementById(b);
+      const [x1, y1] = anchor(A, fs), [x2, y2] = anchor(B, ts);
+      const d = Math.max(60, Math.hypot(x2 - x1, y2 - y1) * 0.4);
+      // control points push out of the start side, into the end side
+      const c1 = [x1 + DIR[fs][0]*d, y1 + DIR[fs][1]*d];
+      let c2 = [x2 + DIR[ts][0]*d, y2 + DIR[ts][1]*d];
+      if (fs === "b" && ts === "b") { c2 = [x2, Math.max(y1, y2) + 120]; c1[1] = Math.max(y1, y2) + 120; }
+      const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      p.setAttribute("d", `M${x1},${y1} C${c1[0]},${c1[1]} ${c2[0]},${c2[1]} ${x2},${y2}`);
+      p.setAttribute("class", `wire ${kind}`);
+      p.setAttribute("stroke", COLORS[color]);
+      p.setAttribute("marker-end", `url(#ah-${color})`);
+      svg.appendChild(p);
+      if (label) {
+        const len = p.getTotalLength(), pt = p.getPointAtLength(len * 0.5);
+        const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        t.setAttribute("x", pt.x); t.setAttribute("y", pt.y - 6);
+        t.setAttribute("text-anchor", "middle");
+        t.setAttribute("class", "wire-label");
+        t.textContent = label;
+        svg.appendChild(t);
+      }
+    }
+  }
+
+  function fit() {
+    const s = Math.min(1, window.innerWidth / stage.offsetWidth);
+    stage.style.transform = `scale(${s})`;
+    document.body.style.height = (stage.offsetHeight * s) + "px";
+  }
+  window.addEventListener("resize", fit);
+  draw(); fit();
+</script>
+</body>
+</html>
