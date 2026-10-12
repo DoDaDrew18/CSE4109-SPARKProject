@@ -125,6 +125,29 @@ like news would have to help.
 the season-only model is best (skill +0.35 vs the mean); weather is slightly
 worse than season alone (p < 0.001).
 
+## Ask the map (Demo II)
+
+`python -m src.spatial.app` opens a page where you type a question ("where was
+flu rising around St. Louis at Christmas 2025?") and get a county map, a short
+written answer, each study metro's nowcast for that Saturday, and the local
+news that was public that week. What keeps it honest:
+
+- **The LLM only reads the question.** It fills a closed schema (illness,
+  level or change, week, place); every number comes from the data. With no
+  LLM running, a rule parser reads the question offline; the page says which.
+- **Nothing is adjusted silently.** A date past the data, a missing week or an
+  ambiguous county ("Jefferson County exists in 26 states") is stated in the answer.
+- **Clusters are computed nationally, then cropped:** Gi* for levels, local
+  Moran's I for week-over-week change. Tiny EDs (0% most weeks, 50% once) and
+  CDC "Sparse" areas stay on the map but out of the lists and the cluster
+  test; in the test lattice, two such cells hide a 16-county cluster.
+- **News appears only once published**, with the quote that grounds its label.
+
+What it shows for Sat Dec 27, 2025: St. Louis had **no** official number at
+all (that week's first print appeared Jun 13, 2026), and Chicago's newest
+official value, 3.2% for the week ending Dec 13, trailed that week's settled
+11.9% nearly fourfold: the gap the nowcast has to close.
+
 ## Data
 
 | Source | What it gives us | Module | Status |
@@ -162,6 +185,8 @@ python -m src.ingest_nwss --archive       # recover past NWSS vintages from the 
 
 # news
 python -m src.news.fetch                  # download text for labels/articles.csv → raw/news/
+python -m src.news.label_app serve --labeler human_a   # hand labels in the browser → labels/human/
+python -m src.news.label_app status       # progress, human-human overlap, disagreements
 ollama pull qwen3:8b                      # free local LLM (or --backend anthropic)
 python -m src.news.label && python -m src.news.ground
 python -m src.align --news-source llm     # news_n / news_concern from LLM labels
@@ -170,6 +195,10 @@ python -m src.news.baseline && python -m src.news.agreement   # → data/labels/
 # table, models, map
 python -m src.align && python -m src.nowcast
 python -m src.spatial.map --week 2025-12-27 --out demo/map.html
+
+# ask the map in plain English (Demo II); needs the CDC CSV in raw/cdc_nssp/
+python -m src.spatial.app                 # browser: type a question, get map + answer
+python -m src.spatial.query "where was flu rising around St. Louis at Christmas 2025?"
 ```
 
 ## Data collection protocol
@@ -194,7 +223,7 @@ git clone https://github.com/DoDaDrew18/CSE4109-SPARKProject.git
 cd CSE4109-SPARKProject
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt     # wheels only; no GDAL or compiler needed
-python -m pytest tests/ -q          # expect 169 passed, all offline
+python -m pytest tests/ -q          # expect 239 passed, all offline (macOS: brew install libomp)
 ```
 
 Delphi limits anonymous use to ~60 requests/hour. A free key
@@ -215,9 +244,11 @@ src/nowcast.py         rolling-origin model ladder
 src/evaluate.py        MAE, R², gap closed, skill, Wilcoxon
 src/history.py         national HSA history → gradient-boosted weekly change
 src/figures.py         demo figures from data/results/
-src/news/              collect, fetch, label (LLM), ground, agreement, baseline, features
-src/spatial/           shapes, hot spots (Gi*, local Moran), map, SaTScan export
-labels/                article catalog + human label template (committed)
+src/news/              collect, fetch, label (LLM), label_app (humans), ground, agreement,
+                       baseline, features
+src/spatial/           shapes, hot spots (Gi*, local Moran), map, SaTScan export,
+                       query + query_map + app (natural-language map, Demo II)
+labels/                article catalog, labeling order, hand labels per labeler (committed)
 docs/                  overview, schematic, pipeline chart, labeling guide
 demo/                  St. Louis map views + screenshots
 tests/                 pytest suite (offline; no network needed)
@@ -244,11 +275,12 @@ raw/, data/            snapshots, pulls, derived tables (gitignored)
 - [x] News candidate corpus (196 articles) + labeling guide
 - [x] LLM labeler, quote-grounding check, agreement report (tested offline)
 - [x] Map with Gi* hot spots; SaTScan input export
-- [ ] **Hand-label 60–200 articles** (two labelers on the first 30)
+- [x] Hand-labeling app + fixed labeling order (`labels/assignments.csv`, 30 double-labeled)
+- [ ] **Hand-label 60–200 articles** (two labelers on the first 30; `src/news/label_app.py`)
 - [x] Run the LLM labeler (local Qwen3 8B via Ollama) + quote check
 - [ ] Agreement report vs human labels
 - [x] ARIMA, HistGBM, XGBoost, random forest, SVM, linear rungs; ablation
 - [x] News rungs (4: ridge + news; 12: GBM + local + news), first pass on LLM labels
 - [ ] News test on a corpus not picked around known peaks
 - [ ] Decide how to treat Missouri labels before Aug 2025
-- [ ] Natural-language search on the map (Demo II)
+- [x] Natural-language search on the map (Demo II; rule parser offline, LLM optional)
