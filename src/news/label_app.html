@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SPARK · hand labeling</title>
+<style>
+  :root {
+    --ink: #0b0b0b; --muted: #52514e; --line: #e4e3df; --bg: #f7f6f3; --card: #fff;
+    --blue: #2a78d6; --blue-soft: #e9f1fb; --orange: #eb6834; --orange-soft: #fdeee7;
+    --ok: #1f7a4a; --err: #b42318; --warn: #8a5300;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.5 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+  button { font: inherit; cursor: pointer; border: 1px solid var(--line); background: var(--card);
+           border-radius: 6px; padding: 5px 10px; color: var(--ink); }
+  button:hover { border-color: #c9c7c1; }
+  button.primary { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 600; }
+  button.primary:disabled { opacity: .5; cursor: default; }
+  kbd { font: 11px ui-monospace, Menlo, monospace; border: 1px solid var(--line); border-bottom-width: 2px;
+        border-radius: 4px; padding: 0 4px; color: var(--muted); background: var(--card); }
+  button.primary kbd { color: #fff; background: transparent; border-color: rgba(255,255,255,.5); }
+  .muted { color: var(--muted); }
+  .chip { display: inline-block; font-size: 12px; border-radius: 999px; padding: 1px 9px;
+          background: var(--blue-soft); color: #184f95; }
+  .chip.done { background: #e6f3ec; color: var(--ok); }
+
+  header { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 14px;
+           padding: 9px 20px; background: var(--card); border-bottom: 1px solid var(--line); }
+  header .brand { font-weight: 700; letter-spacing: .02em; }
+  .progress { width: 180px; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+  .progress div { height: 100%; width: 0; background: var(--blue); transition: width .3s; }
+  .spacer { flex: 1; }
+
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 28px;
+         max-width: 1280px; margin: 0 auto; padding: 22px 20px 60px; }
+  #article { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+             padding: 26px 34px 34px; min-height: 70vh; }
+  #article .meta { color: var(--muted); font-size: 13px; display: flex; gap: 8px; align-items: center;
+                   flex-wrap: wrap; }
+  #article h1 { font-size: 23px; line-height: 1.3; margin: 10px 0 6px; }
+  #body { margin-top: 18px; font-size: 16px; line-height: 1.65; max-width: 70ch; }
+  #body p { margin: 0 0 1em; }
+  #body ::selection { background: #ffd8c6; }
+  #body .missing { color: var(--err); }
+  a { color: var(--blue); }
+
+  #panel { position: sticky; top: 64px; align-self: start; max-height: calc(100vh - 80px);
+           overflow-y: auto; background: var(--card); border: 1px solid var(--line);
+           border-radius: 10px; padding: 16px 18px; }
+  fieldset { border: 0; padding: 0; margin: 0 0 14px; }
+  fieldset:disabled { opacity: .45; }
+  legend { font-weight: 600; margin-bottom: 6px; display: flex; gap: 6px; align-items: center; width: 100%; }
+  legend .n { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%;
+              background: var(--ink); color: #fff; font-size: 11px; }
+  legend .right { margin-left: auto; font-weight: 400; }
+  .pill { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line);
+          border-radius: 6px; padding: 4px 10px; margin: 0 6px 6px 0; cursor: pointer; user-select: none; }
+  .pill:has(input:checked) { border-color: var(--blue); background: var(--blue-soft); }
+  .row { display: flex; gap: 8px; align-items: baseline; padding: 4px 8px; border-radius: 6px; cursor: pointer; }
+  .row:has(input:checked) { background: var(--blue-soft); }
+  .row b { width: 12px; }
+  .hint { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
+  select, textarea, input[type=date] { width: 100%; font: inherit; padding: 6px 8px; border: 1px solid var(--line);
+                                       border-radius: 6px; background: #fff; color: var(--ink); }
+  textarea { resize: vertical; }
+  .qcheck { font-size: 12px; margin-top: 4px; min-height: 18px; }
+  .qcheck .ok { color: var(--ok); } .qcheck .bad { color: var(--err); } .qcheck .note { color: var(--warn); }
+  #msgs .err, #msgs .warn { border-radius: 6px; padding: 7px 10px; margin: 0 0 8px; font-size: 13px; }
+  #msgs .err { background: #fdecea; color: var(--err); }
+  #msgs .warn { background: #fff4e0; color: var(--warn); }
+  .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+
+  #others { border: 1px dashed var(--orange); background: var(--orange-soft); border-radius: 8px;
+            padding: 10px 12px; margin-bottom: 14px; font-size: 13px; }
+  #others table { width: 100%; border-collapse: collapse; margin: 6px 0; }
+  #others td, #others th { text-align: left; padding: 2px 6px 2px 0; vertical-align: top; }
+  #others tr.differ td { color: var(--err); font-weight: 600; }
+
+  #quoteBtn { position: absolute; z-index: 20; background: var(--ink); color: #fff; border: 0;
+              box-shadow: 0 2px 8px rgba(0,0,0,.25); }
+  #quoteBtn kbd { color: #fff; background: transparent; border-color: rgba(255,255,255,.4); }
+  #toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 30;
+           background: var(--ink); color: #fff; padding: 8px 14px; border-radius: 8px; font-size: 13px;
+           max-width: 640px; box-shadow: 0 4px 14px rgba(0,0,0,.2); }
+
+  dialog { border: 1px solid var(--line); border-radius: 10px; padding: 0; width: min(880px, 92vw);
+           max-height: 84vh; }
+  dialog::backdrop { background: rgba(0,0,0,.25); }
+  dialog .head { display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line);
+                 position: sticky; top: 0; background: var(--card); }
+  dialog .head h2 { font-size: 16px; margin: 0; flex: 1; }
+  dialog .content { padding: 12px 16px 18px; overflow: auto; }
+  #guideText { white-space: pre-wrap; font: 13px/1.5 ui-monospace, Menlo, monospace; margin: 0; }
+  #queueTable { width: 100%; border-collapse: collapse; font-size: 13px; }
+  #queueTable td { padding: 5px 8px; border-bottom: 1px solid var(--line); }
+  #queueTable tr { cursor: pointer; }
+  #queueTable tr:hover td { background: var(--bg); }
+  #queueTable tr.current td { background: var(--blue-soft); }
+  #keysTable td { padding: 4px 12px 4px 0; }
+  @media (max-width: 980px) { main { grid-template-columns: 1fr; } #panel { position: static; max-height: none; } }
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">SPARK</span><span class="muted">hand labeling</span>
+  <span class="chip" id="who">…</span>
+  <div class="progress" title="progress"><div id="bar"></div></div>
+  <span id="counts" class="muted"></span>
+  <span class="spacer"></span>
+  <button type="button" id="queueBtn">Queue</button>
+  <button type="button" id="guideBtn">Labeling guide</button>
+  <button type="button" id="keysBtn" title="Keyboard shortcuts">?</button>
+</header>
+
+<main>
+  <article id="article">
+    <div class="meta">
+      <span id="pos"></span>
+      <span id="dbl" class="chip" hidden>double-labeled: label on your own</span>
+      <span id="saved" class="chip done" hidden>saved</span>
+    </div>
+    <h1 id="title"></h1>
+    <div class="meta">
+      <span id="outlet"></span><span>·</span><span id="published"></span><span>·</span>
+      <a id="url" target="_blank" rel="noopener noreferrer">open original ↗</a>
+    </div>
+    <div id="body"></div>
+  </article>
+
+  <aside id="panel">
+    <div id="others" hidden></div>
+    <form id="f" autocomplete="off">
+      <fieldset>
+        <legend><span class="n">1</span>Relevant?<span class="right muted"><kbd>y</kbd> <kbd>n</kbd></span></legend>
+        <label class="pill"><input type="radio" name="relevant" value="y"> yes</label>
+        <label class="pill"><input type="radio" name="relevant" value="n"> no</label>
+        <p class="hint">Yes only if it reports <b>current</b> (≈4 weeks) respiratory illness
+          <b>activity</b> in a study county.</p>
+      </fieldset>
+      <fieldset id="fipsSet">
+        <legend><span class="n">2</span>County</legend>
+        <select id="fips"></select>
+        <p class="hint">The quote should name the place; don't infer it from the outlet.</p>
+      </fieldset>
+      <fieldset id="illnessSet">
+        <legend><span class="n">3</span>Illness<span class="right muted"><kbd>c</kbd> <kbd>f</kbd> <kbd>r</kbd> <kbd>g</kbd></span></legend>
+        <label class="pill"><input type="checkbox" name="illness" value="covid"> COVID</label>
+        <label class="pill"><input type="checkbox" name="illness" value="flu"> flu</label>
+        <label class="pill"><input type="checkbox" name="illness" value="rsv"> RSV</label>
+        <label class="pill"><input type="checkbox" name="illness" value="respiratory_general"> general</label>
+      </fieldset>
+      <fieldset id="concernSet">
+        <legend><span class="n">4</span>Concern now<span class="right muted"><kbd>0</kbd>–<kbd>3</kbd></span></legend>
+        <label class="row"><input type="radio" name="concern" value="0"><b>0</b><span>low, falling or over</span></label>
+        <label class="row"><input type="radio" name="concern" value="1"><b>1</b><span>mention / routine: vaccine clinics, "flu season is here"</span></label>
+        <label class="row"><input type="radio" name="concern" value="2"><b>2</b><span>rising / warning: "doubled", "health officials urge"</span></label>
+        <label class="row"><input type="radio" name="concern" value="3"><b>3</b><span>surge / strain: diversion, ED waits, closures</span></label>
+      </fieldset>
+      <fieldset id="eventSet">
+        <legend><span class="n">5</span>Event week <span class="muted" style="font-weight:400">(optional)</span></legend>
+        <input type="date" id="event_week">
+        <p class="hint">Only if the article dates the activity to a different week than it was published.</p>
+      </fieldset>
+      <fieldset>
+        <legend><span class="n">6</span>Quote<span class="right muted">select text, then <kbd>q</kbd></span></legend>
+        <textarea id="quote" rows="4" placeholder="Select the sentence that supports the concern level, then press q"></textarea>
+        <div id="qcheck" class="qcheck"></div>
+      </fieldset>
+      <fieldset>
+        <legend><span class="n">7</span>Notes</legend>
+        <textarea id="notes" rows="2" placeholder="e.g. second county mentioned, why it's unclear…"></textarea>
+      </fieldset>
+      <div id="msgs"></div>
+      <div class="actions">
+        <button type="button" id="prev">← Prev <kbd>k</kbd></button>
+        <button type="button" id="skip">Skip <kbd>j</kbd></button>
+        <button type="submit" class="primary" id="saveBtn">Save &amp; next <kbd>⌘↵</kbd></button>
+      </div>
+    </form>
+  </aside>
+</main>
+
+<button type="button" id="quoteBtn" hidden>Use as quote <kbd>q</kbd></button>
+<div id="toast" hidden></div>
+
+<dialog id="queue">
+  <div class="head"><h2>Queue</h2><button type="button" data-close>Close</button></div>
+  <div class="content"><table id="queueTable"></table></div>
+</dialog>
+<dialog id="guide">
+  <div class="head"><h2>Labeling guide (docs/LABELING_GUIDE.md)</h2><button type="button" data-close>Close</button></div>
+  <div class="content"><pre id="guideText">loading…</pre></div>
+</dialog>
+<dialog id="keys">
+  <div class="head"><h2>Keyboard shortcuts</h2><button type="button" data-close>Close</button></div>
+  <div class="content"><table id="keysTable">
+    <tr><td><kbd>y</kbd> <kbd>n</kbd></td><td>relevant yes / no</td></tr>
+    <tr><td><kbd>0</kbd>–<kbd>3</kbd></td><td>concern level</td></tr>
+    <tr><td><kbd>c</kbd> <kbd>f</kbd> <kbd>r</kbd> <kbd>g</kbd></td><td>toggle COVID / flu / RSV / general respiratory</td></tr>
+    <tr><td><kbd>q</kbd></td><td>use the selected article text as the quote</td></tr>
+    <tr><td><kbd>⌘</kbd>/<kbd>Ctrl</kbd> + <kbd>Enter</kbd></td><td>save and go to the next unlabeled article</td></tr>
+    <tr><td><kbd>j</kbd> <kbd>k</kbd></td><td>next / previous article without saving</td></tr>
+    <tr><td><kbd>?</kbd></td><td>this list</td></tr>
+  </table></div>
+</dialog>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const FIELD_NAMES = {relevant: "relevant", fips: "county", illness: "illness", concern: "concern",
+                     event_week: "event week"};
+let S = null, A = null, dirty = false, t0 = Date.now(), qTimer = null, toastTimer = null;
+
+async function api(path, body) {
+  const opt = body === undefined ? {} : {method: "POST", headers: {"Content-Type": "application/json"},
+                                         body: JSON.stringify(body)};
+  const r = await fetch(path, opt);
+  return r.json();
+}
+
+function el(tag, text, cls) {
+  const e = document.createElement(tag);
+  if (text !== undefined) e.textContent = text;
+  if (cls) e.className = cls;
+  return e;
+}
+
+// ---------------------------------------------------------------- state
+async function refresh() {
+  S = await api("/api/state");
+  $("who").textContent = S.labeler;
+  const c = S.counts;
+  $("counts").textContent = S.adjudicating
+    ? `${c.done}/${c.total} disagreements adjudicated`
+    : `double set ${c.double_done}/${c.double_total} · all ${c.done}/${c.total}`
+      + (c.with_text < c.total ? ` · ${c.total - c.with_text} without text` : "");
+  $("bar").style.width = (c.total ? 100 * c.done / c.total : 0) + "%";
+  renderQueue();
+}
+
+function index(id) { return S.items.findIndex((i) => i.article_id === id); }
+
+function firstTodo() {
+  const it = S.items.find((i) => !i.done && i.has_text) || S.items.find((i) => i.has_text) || S.items[0];
+  return it ? it.article_id : null;
+}
+
+// ---------------------------------------------------------------- article
+async function load(id, force) {
+  if (!id) return showEmpty();
+  if (dirty && !force && !confirm("You have unsaved changes on this article. Leave anyway?")) return;
+  const a = await api("/api/article?id=" + encodeURIComponent(id));
+  if (a.error) return toast(`Article ${id} is not in your queue.`);
+  A = a;
+  renderArticle();
+  fillForm(A.label);
+  renderOthers();
+  dirty = false;
+  t0 = Date.now();
+  history.replaceState(null, "", "#" + id);
+  renderQueue();
+  window.scrollTo({top: 0});
+}
+
+function renderArticle() {
+  const n = S.items.length, i = index(A.article_id) + 1;
+  $("pos").textContent = S.adjudicating ? `Disagreement ${i} of ${n} · article #${A.position}`
+                                        : `Article ${A.position} of ${n}`;
+  $("dbl").hidden = !A.double || S.adjudicating;
+  $("saved").hidden = !A.label;
+  $("title").textContent = A.title || "(no title)";
+  $("outlet").textContent = A.outlet || "unknown outlet";
+  $("published").textContent = A.published || "date unknown";
+  const url = $("url");
+  url.hidden = !/^https?:\/\//i.test(A.url || "");
+  if (!url.hidden) url.href = A.url;
+  const body = $("body");
+  body.replaceChildren();
+  if (A.text === null) {
+    body.append(el("p", "No text for this article on this machine. Run `python -m src.news.fetch` " +
+                        "from the repo root, or skip it.", "missing"));
+  } else {
+    for (const para of A.text.split(/\n+/)) if (para.trim()) body.append(el("p", para));
+  }
+  $("saveBtn").disabled = A.text === null;
+}
+
+function showEmpty() {
+  A = null;
+  $("pos").textContent = "";
+  $("title").textContent = S && S.adjudicating ? "Nothing to adjudicate" : "Nothing to label";
+  $("body").replaceChildren(el("p", S && S.adjudicating
+    ? "human_a and human_b agree on every double-labeled article both have finished (or have not both finished any yet)."
+    : "No articles are assigned. Run `python -m src.news.label_app assign` first.", "muted"));
+  $("saveBtn").disabled = true;
+}
+
+// ---------------------------------------------------------------- form
+function radio(name, value) {
+  for (const r of document.querySelectorAll(`input[name=${name}]`)) r.checked = r.value === String(value);
+}
+function checked(name) {
+  const r = document.querySelector(`input[name=${name}]:checked`);
+  return r ? r.value : "";
+}
+
+function fillForm(l) {
+  $("f").reset();
+  if (l) {
+    radio("relevant", l.relevant);
+    $("fips").value = l.fips || "";
+    const ill = (l.illness || "").split("|");
+    for (const b of document.querySelectorAll("input[name=illness]")) b.checked = ill.includes(b.value);
+    radio("concern", l.concern);
+    $("event_week").value = l.event_week || "";
+    $("quote").value = l.quote || "";
+    $("notes").value = l.notes || "";
+  }
+  syncRelevant();
+  showMsgs([], []);
+  checkQuote();
+}
+
+function readForm() {
+  return {
+    article_id: A.article_id,
+    relevant: checked("relevant"),
+    fips: $("fips").value,
+    illness: [...document.querySelectorAll("input[name=illness]:checked")].map((b) => b.value),
+    concern: checked("concern"),
+    event_week: $("event_week").value,
+    quote: $("quote").value,
+    notes: $("notes").value,
+    seconds: Math.round((Date.now() - t0) / 1000),
+  };
+}
+
+function syncRelevant() {
+  const notRelevant = checked("relevant") === "n";
+  $("illnessSet").disabled = notRelevant;
+  $("concernSet").disabled = notRelevant;
+  $("eventSet").disabled = notRelevant;
+  if (notRelevant) {      // the guide's values for a not-relevant article
+    for (const b of document.querySelectorAll("input[name=illness]")) b.checked = false;
+    radio("concern", "0");
+    $("event_week").value = "";
+  }
+}
+
+function showMsgs(errors, warnings) {
+  const box = $("msgs");
+  box.replaceChildren(...errors.map((m) => el("div", m, "err")), ...warnings.map((m) => el("div", m, "warn")));
+  if (errors.length) box.scrollIntoView({block: "nearest", behavior: "smooth"});
+}
+
+function checkQuote() {
+  clearTimeout(qTimer);
+  qTimer = setTimeout(async () => {
+    const box = $("qcheck"), q = $("quote").value.trim();
+    box.replaceChildren();
+    if (!q || !A || A.text === null) return;
+    const r = await api("/api/check", {article_id: A.article_id, quote: q, fips: $("fips").value});
+    if (r.found) box.append(el("span", `✓ found in the article (${r.method})`, "ok"));
+    else if (r.method === "too_short") box.append(el("span", "✗ too short: a full clause, 4+ words", "bad"));
+    else box.append(el("span", "✗ not found in the article: select it in the text", "bad"));
+    if (r.found && r.names_county === true) box.append(el("span", " · names the county", "ok"));
+    if (r.found && r.names_county === false) box.append(el("span", " · doesn't name the county", "note"));
+  }, 250);
+}
+
+function useSelection() {
+  const sel = window.getSelection();
+  const text = sel.toString().replace(/\s+/g, " ").trim();
+  if (!text || !$("body").contains(sel.anchorNode)) return;
+  $("quote").value = text;
+  dirty = true;
+  $("quoteBtn").hidden = true;
+  checkQuote();
+}
+
+async function save() {
+  if (!A || A.text === null) return;
+  const r = await api("/api/save", readForm());
+  if (!r.ok) return showMsgs(r.errors, r.warnings || []);
+  dirty = false;
+  await refresh();
+  if (r.warnings.length) toast("Saved with a note: " + r.warnings.join(" "));
+  else toast("Saved.");
+  if (r.next) load(r.next, true);
+  else { A.label = readForm(); renderArticle(); toast("Saved. Every article in your queue is labeled."); }
+}
+
+function go(step) {
+  if (!A || !S.items.length) return;
+  const i = (index(A.article_id) + step + S.items.length) % S.items.length;
+  load(S.items[i].article_id);
+}
+
+// ---------------------------------------------------------------- adjudication
+function describe(l, field) {
+  if (!l) return "–";
+  const v = l[field];
+  return v === "" || v === undefined ? "–" : v;
+}
+
+function renderOthers() {
+  const box = $("others");
+  box.hidden = !(S.adjudicating && A.others);
+  if (box.hidden) return;
+  const {human_a: a, human_b: b, differ} = A.others;
+  box.replaceChildren(el("strong", "human_a vs human_b"),
+                      el("span", differ.length ? ` · differ on ${differ.map((f) => FIELD_NAMES[f]).join(", ")}` : ""));
+  const table = el("table");
+  const head = el("tr");
+  head.append(el("th", ""), el("th", "human_a"), el("th", "human_b"));
+  table.append(head);
+  for (const f of ["relevant", "fips", "illness", "concern", "event_week"]) {
+    const tr = el("tr", undefined, differ.includes(f) ? "differ" : "");
+    tr.append(el("td", FIELD_NAMES[f]), el("td", describe(a, f)), el("td", describe(b, f)));
+    table.append(tr);
+  }
+  box.append(table);
+  for (const [who, l] of [["human_a", a], ["human_b", b]]) {
+    if (l && l.quote) box.append(el("div", `${who} quote: “${l.quote}”`, "muted"));
+  }
+  const actions = el("div");
+  actions.style.marginTop = "8px";
+  for (const [who, l] of [["human_a", a], ["human_b", b]]) {
+    const btn = el("button", `Start from ${who}`);
+    btn.type = "button";
+    btn.style.marginRight = "6px";
+    btn.onclick = () => { fillForm({...l, notes: ""}); dirty = true; };
+    actions.append(btn);
+  }
+  box.append(actions);
+}
+
+// ---------------------------------------------------------------- dialogs
+function renderQueue() {
+  if (!S) return;
+  const table = $("queueTable");
+  table.replaceChildren();
+  for (const it of S.items) {
+    const tr = el("tr", undefined, A && it.article_id === A.article_id ? "current" : "");
+    const mark = it.done ? "✓" : it.has_text ? "·" : "no text";
+    tr.append(el("td", String(it.position), "muted"), el("td", mark),
+              el("td", it.double ? "double" : "", "muted"),
+              el("td", it.title || it.article_id), el("td", it.outlet, "muted"), el("td", it.published, "muted"));
+    tr.onclick = () => { $("queue").close(); load(it.article_id); };
+    table.append(tr);
+  }
+}
+
+function toast(message) {
+  const t = $("toast");
+  t.textContent = message;
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 3500);
+}
+
+// ---------------------------------------------------------------- wiring
+function wire() {
+  const fips = $("fips");
+  fips.append(new Option("— choose —", ""));
+  for (const [code, name] of Object.entries(S.counties)) fips.append(new Option(`${code} · ${name}`, code));
+  fips.append(new Option("other: outside the study counties, or state/national only", "other"));
+  fips.append(new Option("unclear: local, but can't tell which county", "unclear"));
+
+  $("f").addEventListener("submit", (e) => { e.preventDefault(); save(); });
+  $("f").addEventListener("input", () => { dirty = true; });
+  $("f").addEventListener("change", (e) => {
+    dirty = true;
+    if (e.target.name === "relevant") syncRelevant();
+    if (e.target.id === "fips") checkQuote();
+  });
+  $("quote").addEventListener("input", checkQuote);
+  $("prev").onclick = () => go(-1);
+  $("skip").onclick = () => go(+1);
+  $("queueBtn").onclick = () => $("queue").showModal();
+  $("keysBtn").onclick = () => $("keys").showModal();
+  $("guideBtn").onclick = async () => {
+    $("guide").showModal();
+    $("guideText").textContent = await (await fetch("/guide")).text();
+  };
+  for (const b of document.querySelectorAll("[data-close]")) b.onclick = () => b.closest("dialog").close();
+  $("quoteBtn").onclick = useSelection;
+  $("quoteBtn").addEventListener("mousedown", (e) => e.preventDefault());   // keep the selection
+  $("body").addEventListener("mouseup", () => {
+    const sel = window.getSelection(), btn = $("quoteBtn");
+    if (!sel.toString().trim() || !$("body").contains(sel.anchorNode)) { btn.hidden = true; return; }
+    const rect = sel.getRangeAt(0).getBoundingClientRect();
+    btn.style.top = `${window.scrollY + rect.bottom + 8}px`;
+    btn.style.left = `${window.scrollX + rect.left}px`;
+    btn.hidden = false;
+  });
+  document.addEventListener("selectionchange", () => {
+    if (!window.getSelection().toString().trim()) $("quoteBtn").hidden = true;
+  });
+  window.addEventListener("beforeunload", (e) => { if (dirty) e.preventDefault(); });
+
+  document.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); save(); return; }
+    if (e.metaKey || e.ctrlKey || e.altKey || document.querySelector("dialog[open]")) return;
+    const t = e.target, typing = ["TEXTAREA", "SELECT"].includes(t.tagName)
+      || (t.tagName === "INPUT" && !["radio", "checkbox"].includes(t.type));
+    if (typing) return;
+    const k = e.key.toLowerCase(), illness = {c: "covid", f: "flu", r: "rsv", g: "respiratory_general"};
+    if (k === "y" || k === "n") { radio("relevant", k); syncRelevant(); }
+    else if (["0", "1", "2", "3"].includes(k)) { if (!$("concernSet").disabled) radio("concern", k); }
+    else if (k in illness) {
+      if ($("illnessSet").disabled) return;
+      const b = document.querySelector(`input[name=illness][value=${illness[k]}]`);
+      b.checked = !b.checked;
+    }
+    else if (k === "q") { e.preventDefault(); return useSelection(); }
+    else if (k === "j") return go(+1);
+    else if (k === "k") return go(-1);
+    else if (k === "?") return $("keys").showModal();
+    else return;
+    dirty = true;
+    e.preventDefault();
+  });
+}
+
+(async function init() {
+  await refresh();
+  wire();
+  const fromHash = location.hash.slice(1);
+  await load(fromHash && index(fromHash) >= 0 ? fromHash : firstTodo(), true);
+})();
+</script>
+</body>
+</html>

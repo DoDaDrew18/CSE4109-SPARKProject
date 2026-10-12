@@ -43,7 +43,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.news.schema import ILLNESSES, load_human_labels, human_consensus
+from src.news.schema import HUMAN_SOURCES, ILLNESSES, load_human_labels, human_consensus
 
 __all__ = ["NULL", "FIELDS", "confusion_matrix", "cohen_kappa", "percent_agreement",
            "bootstrap_ci", "precision_recall", "paired_values", "compare_field",
@@ -368,7 +368,9 @@ def build_report(humans: pd.DataFrame, llm: pd.DataFrame | None, vader: pd.DataF
 
 def main(argv=None):
     p = argparse.ArgumentParser(description="LLM vs human agreement report.")
-    p.add_argument("--humans", default="labels/human_labels.csv")
+    p.add_argument("--humans", nargs="+", default=[str(s) for s in HUMAN_SOURCES],
+                   help="human label CSVs or directories (default: labels/human_labels.csv "
+                        "and labels/human/)")
     p.add_argument("--llm", default="data/labels/llm_labels_grounded.parquet",
                    help="grounded LLM labels (falls back to ungrounded with a warning)")
     p.add_argument("--vader", default="data/labels/vader_scores.parquet")

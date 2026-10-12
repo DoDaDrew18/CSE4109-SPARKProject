@@ -188,11 +188,21 @@ def find_quote(quote, text: str, min_ratio: float = FUZZY_MIN) -> Match:
 
 
 def names_county(quote, fips: str) -> bool:
-    """Does the quote name ``fips``'s county, city, or a place in it?"""
+    """Does the quote name ``fips``'s county, city, or a place in it?
+
+    A place name that only appears inside another study county's longer name
+    does not count: "St. Louis County" names 29189, so the "St. Louis" in it
+    must not also vouch for the city (29510).
+    """
     if quote is None or fips not in PLACE_ALIASES:
         return False
     q = " " + _nopunct(normalize(quote)) + " "
-    return any(" " + _nopunct(alias) + " " in q for alias in PLACE_ALIASES[fips])
+    own = [_nopunct(alias) for alias in PLACE_ALIASES[fips]]
+    for other, aliases in PLACE_ALIASES.items():
+        for longer in (_nopunct(a) for a in aliases):
+            if other != fips and any(o != longer and f" {o} " in f" {longer} " for o in own):
+                q = re.sub(r"(?<= )" + re.escape(longer) + r"(?= )", "#", q)
+    return any(f" {o} " in q for o in own)
 
 
 def _needs_quote(field: str, value, relevant) -> bool:

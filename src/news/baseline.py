@@ -60,12 +60,13 @@ def separation(vader: pd.DataFrame, consensus: pd.DataFrame) -> dict:
 
 def main(argv=None):
     from src.news.ground import load_article_texts
-    from src.news.schema import human_consensus, load_human_labels
+    from src.news.schema import HUMAN_SOURCES, human_consensus, human_label_files, load_human_labels
 
     p = argparse.ArgumentParser(description="VADER sentiment baseline.")
     p.add_argument("--manifest", default="raw/news/articles.parquet")
     p.add_argument("--text-dir", default="raw/news/text")
-    p.add_argument("--humans", default="labels/human_labels.csv")
+    p.add_argument("--humans", nargs="+", default=[str(s) for s in HUMAN_SOURCES],
+                   help="human label CSVs or directories")
     p.add_argument("--out", default="data/labels/vader_scores.parquet")
     args = p.parse_args(argv)
 
@@ -76,7 +77,7 @@ def main(argv=None):
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     scores.to_parquet(args.out, index=False)
     print(f"scored {len(scores)} articles -> {args.out}")
-    if Path(args.humans).exists():
+    if human_label_files(args.humans):
         sep = separation(scores, human_consensus(load_human_labels(args.humans)))
         print(f"Spearman(compound, human concern) = {sep['spearman']:.3f} (n={sep['n']})")
         print(sep["by_level"].to_string(index=False))

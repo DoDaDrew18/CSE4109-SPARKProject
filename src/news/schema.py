@@ -31,7 +31,8 @@ import pandas as pd
 from src.study import STUDY_FIPS, week_end_of
 
 __all__ = ["ILLNESSES", "FIPS_CHOICES", "LABEL_FIELDS", "HUMAN_COLUMNS",
-           "HUMAN_LABELERS", "LabelFormatError", "validate_label",
+           "HUMAN_LABELERS", "HUMAN_LABELS", "HUMAN_DIR", "HUMAN_SOURCES",
+           "LabelFormatError", "validate_label", "human_label_files",
            "load_human_labels", "human_consensus"]
 
 ILLNESSES: tuple[str, ...] = ("covid", "flu", "rsv", "respiratory_general")
@@ -41,6 +42,14 @@ LABEL_FIELDS: tuple[str, ...] = ("relevant", "fips", "illness", "concern", "even
 HUMAN_COLUMNS: tuple[str, ...] = ("article_id", "labeler", "relevant", "fips", "illness",
                                   "concern", "event_week", "quote", "notes", "is_example")
 HUMAN_LABELERS: tuple[str, ...] = ("human_a", "human_b", "adjudicated")
+
+# Where human labels live. The guide's hand-made sheet, plus one file per labeler
+# written by the labeling app (src/news/label_app.py). One file per person means
+# two people labeling on two laptops never edit the same file, so git merges
+# their work cleanly; readers take the union of both places.
+HUMAN_LABELS = Path("labels/human_labels.csv")
+HUMAN_DIR = Path("labels/human")
+HUMAN_SOURCES: tuple[Path, ...] = (HUMAN_LABELS, HUMAN_DIR)
 
 _TRUE = {"y", "yes", "true", "1", "t"}
 _FALSE = {"n", "no", "false", "0", "f"}
@@ -170,37 +179,66 @@ def validate_label(row: dict) -> tuple[dict, list[str]]:
     return clean, errors
 
 
-def load_human_labels(path) -> pd.DataFrame:
-    """Read and validate the human labels CSV; example rows are dropped.
+def human_label_files(sources=HUMAN_SOURCES) -> list[Path]:
+    """Every human labels CSV that exists among ``sources``.
 
-    Raises ``LabelFormatError`` listing *every* bad row (with its line number
-    in the file) so a labeler fixes the sheet in one pass instead of one error
-    at a time.
+    A source is a CSV file, a directory (all of its ``*.csv``), or a list of
+    either. Missing sources are skipped, so a fresh clone with no labels yet
+    gets an empty list rather than an error.
     """
-    raw = pd.read_csv(path, dtype=str, keep_default_na=False)
-    missing = [c for c in HUMAN_COLUMNS if c not in raw.columns and c not in ("notes", "is_example")]
-    if missing:
-        raise LabelFormatError(f"{path}: missing columns {missing}")
-    if "is_example" in raw.columns:
-        raw = raw[~raw["is_example"].str.strip().str.lower().isin(_TRUE)]
+    if isinstance(sources, (str, Path)):
+        sources = [sources]
+    files = []
+    for source in map(Path, sources):
+        if source.is_dir():
+            files.extend(sorted(source.glob("*.csv")))
+        elif source.exists():
+            files.append(source)
+    return files
+
+
+def load_human_labels(path=HUMAN_SOURCES) -> pd.DataFrame:
+    """Read and validate human labels; example rows are dropped.
+
+    ``path`` is a CSV, a directory of CSVs (``labels/human/``, one per
+    labeler), or a list of either; the default reads both places humans
+    write to. Raises ``LabelFormatError`` listing *every* bad row (with its
+    file and line number) so a labeler fixes the sheet in one pass instead of
+    one error at a time.
+    """
+    files = human_label_files(path)
+    if not files:
+        where = path if isinstance(path, (str, Path)) else " or ".join(map(str, path))
+        raise FileNotFoundError(
+            f"no human labels at {where}: label with `python -m src.news.label_app serve "
+            f"--labeler human_a`, or copy labels/human_template.csv to labels/human_labels.csv")
 
     rows, problems = [], []
-    for line, rec in zip(raw.index + 2, raw.to_dict("records")):   # +2: header, 1-based
-        clean, errors = validate_label(rec)
-        labeler = str(rec.get("labeler", "")).strip()
-        if labeler not in HUMAN_LABELERS:
-            errors.append(f"labeler={labeler!r} not in {HUMAN_LABELERS}")
-        clean["labeler"] = labeler
-        if errors:
-            problems.append(f"line {line} ({clean['article_id'] or '?'}): " + "; ".join(errors))
-        rows.append(clean)
+    for file in files:
+        raw = pd.read_csv(file, dtype=str, keep_default_na=False)
+        missing = [c for c in HUMAN_COLUMNS if c not in raw.columns and c not in ("notes", "is_example")]
+        if missing:
+            raise LabelFormatError(f"{file}: missing columns {missing}")
+        if "is_example" in raw.columns:
+            raw = raw[~raw["is_example"].str.strip().str.lower().isin(_TRUE)]
+        where = f"{file.name} " if len(files) > 1 else ""
+        for line, rec in zip(raw.index + 2, raw.to_dict("records")):   # +2: header, 1-based
+            clean, errors = validate_label(rec)
+            labeler = str(rec.get("labeler", "")).strip()
+            if labeler not in HUMAN_LABELERS:
+                errors.append(f"labeler={labeler!r} not in {HUMAN_LABELERS}")
+            clean["labeler"] = labeler
+            if errors:
+                problems.append(f"{where}line {line} ({clean['article_id'] or '?'}): " + "; ".join(errors))
+            rows.append(clean)
+    source = files[0] if len(files) == 1 else [str(f) for f in files]
     if problems:
-        raise LabelFormatError(f"{path}: {len(problems)} bad rows\n  " + "\n  ".join(problems))
+        raise LabelFormatError(f"{source}: {len(problems)} bad rows\n  " + "\n  ".join(problems))
 
     out = pd.DataFrame(rows, columns=[c for c in HUMAN_COLUMNS if c != "is_example"])
     dupes = out.duplicated(["article_id", "labeler"], keep=False)
     if dupes.any():
-        raise LabelFormatError(f"{path}: duplicate (article_id, labeler): "
+        raise LabelFormatError(f"{source}: duplicate (article_id, labeler): "
                                f"{out.loc[dupes, 'article_id'].unique().tolist()}")
     out["concern"] = out["concern"].astype("Int64")
     out["event_week"] = pd.to_datetime(out["event_week"])
