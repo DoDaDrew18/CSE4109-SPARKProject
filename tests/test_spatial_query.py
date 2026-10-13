@@ -106,6 +106,11 @@ def build_world():
     ("May flu be rising in Indiana?", dict(when="latest", measure="change", place="state:IN")),
     ("flu trends in marketing", dict(when="latest")),
     ("covid 3 weeks ago", dict(signal="covid", when="2026-09-12")),
+    ("What was covid like in 2025?", dict(signal="covid", when="peak", season="2025", place="us")),
+    ("What was covid like first week of august in 2025", dict(signal="covid", when="2025-08-07")),
+    ("flu in Missouri mid-january 2026", dict(when="2026-01-15", place="state:MO")),
+    ("covid in july of 2025", dict(when="2025-07-26")),
+    ("flu in Missouri during the 2025-26 season", dict(when="peak", season="2025-26", place="state:MO")),
     ("flu on Thanksgiving", dict(when="2025-11-27")),
     ("flu in December", dict(when="2025-12-27")),
 ])
@@ -153,6 +158,8 @@ def test_peak_uses_the_places_own_series_and_skips_a_young_season(world):
     assert "has 1 week of data so far; using 2025-26" in q.notes[0]
     q = Q.resolve(Q.MapQuery(signal="flu", when="peak", season="2023-24"), values, gaz)
     assert q.week_end == LATEST and "no 2023-24 data" in q.notes[0]
+    q = Q.resolve(Q.MapQuery(signal="flu", when="peak", season="2025"), values, gaz)
+    assert q.week_end == PEAK and "highest week of 2025" in q.notes[0]
 
 
 # ---------------------------------------------------------------- the answer
@@ -294,6 +301,12 @@ def test_llm_answer_is_validated_and_used(world):
     assert "chicagoland" not in request["system"]                       # the question stays out of the prompt
     city = fake_client(json.dumps(GOOD | {"place_type": "county", "metro": "", "county": "St. Louis city, MO"}))
     assert Q.parse_llm("q", gaz, "2025-10-04", LATEST, city, "m", "ollama").place == "county:29510"
+    # qwen3:8b answers "where is RSV rising the most?" with place_type "state" and every place blank
+    nowhere = fake_client(json.dumps(GOOD | {"place_type": "state", "metro": ""}))
+    q = Q.parse_llm("q", gaz, "2025-10-04", LATEST, nowhere, "m", "ollama")
+    assert q.place == "us" and q.parser == "ollama:fake-model"
+    mislabeled = fake_client(json.dumps(GOOD | {"place_type": "state"}))
+    assert Q.parse_llm("q", gaz, "2025-10-04", LATEST, mislabeled, "m", "ollama").place == "metro:chi"
 
 
 @pytest.mark.parametrize("text,stop", [

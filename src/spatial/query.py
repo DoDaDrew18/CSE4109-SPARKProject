@@ -91,7 +91,7 @@ class MapQuery:
     measure: str = "level"           # level | change (week over week)
     direction: str = "up"            # up | down: which way a change question looks
     when: str = "latest"             # latest | peak | YYYY-MM-DD (any day in the week)
-    season: str = ""                 # for peak: "2025-26"; blank = season of the latest data
+    season: str = ""                 # for peak: "2025-26", or a calendar year "2025"; blank = season of the latest data
     place: str = "us"                # us | region:<name> | state:<XX> | metro:<key> | county:<fips>
     top: int = 5
     question: str = ""
@@ -281,8 +281,13 @@ def _parse_when(q: str, latest: pd.Timestamp, notes: list[str]) -> tuple[str, st
                 while pd.Timestamp(_holiday(name, year)) > latest + timedelta(days=6):
                     year -= 1
             return _holiday(name, year).isoformat(), season
-    if m := re.search(_MONTH + r"\s+(20\d\d)\b", q):
-        return _month_end(_MONTHS[_month_key(m.group(1))], int(m.group(2)), latest, notes), season
+    # A month and a year anywhere: "august 2025", "first week of august in 2025", "mid-jan 2026".
+    if (m := re.search(_MONTH, q)) and (y := re.search(r"\b(20\d\d)\b", q)) \
+            and not m.group(1).startswith("may"):
+        month, year = _MONTHS[_month_key(m.group(1))], int(y.group(1))
+        part = re.search(r"\b(first week|early|beginning|start|mid|middle|second week|third week)\b", q)
+        day = {"mid": 15, "middle": 15, "second week": 14, "third week": 21}.get(part.group(1), 7) if part else 0
+        return (_iso(year, month, day, notes) if day else _month_end(month, year, latest, notes)), season
     if m := re.search(r"\bin\s+" + _MONTH + r"(?!\s*\d)", q):
         if not m.group(1).startswith("may"):     # "may" alone is a verb more often than a month
             month = _MONTHS[_month_key(m.group(1))]
@@ -299,6 +304,12 @@ def _parse_when(q: str, latest: pd.Timestamp, notes: list[str]) -> tuple[str, st
                           latest, notes), season
     if re.search(r"\b(last|a) year ago\b|\bthis time last year\b", q):
         return (latest - timedelta(weeks=52)).date().isoformat(), season
+    if season:                          # a season but no week in it: its peak
+        notes.append(f"one map shows one week; showing the peak of {season}")
+        return "peak", season
+    if m := re.search(r"\b(20\d\d)\b", q):   # a bare year: its highest week
+        notes.append(f"one map shows one week; showing the highest week of {m.group(1)}")
+        return "peak", m.group(1)
     if re.search(r"\blast week\b", q):
         notes.append("“last week” = the most recent week with data")
     return "latest", season
@@ -489,9 +500,11 @@ it changed from the week before; otherwise "level".
 - direction: "down" if it asks where activity is falling, declining or improving; else "up".
 - when: "latest" (also for now, this week, last week, currently), "peak" (the highest week of a \
 season), or a date YYYY-MM-DD inside the week asked about. Resolve relative dates ("two weeks \
-ago", "last month", "Christmas") against {latest}, not today's date. A month means its last week.
-- season: for "peak", the season as "2025-26" (seasons run October to September); "" means the \
-season of {latest}.
+ago", "last month", "Christmas") against {latest}, not today's date. A month on its own means its \
+last week; "early" or "the first week of" a month means its 7th, "mid" its 15th, "late" its last week.
+- season: for "peak", the season as "2025-26" (seasons run October to September), or a calendar \
+year as "2025" when the question names only a year ("in 2025": when = "peak", season = "2025"); \
+"" means the season of {latest}.
 - place_type plus exactly one of region / state / metro / county (leave the others ""):
   us = the whole country; region = one of {regions}; state = two-letter postal code;
   metro = {metros};
@@ -526,9 +539,14 @@ def _from_llm(data: dict, question: str, gaz: Gazetteer, parser: str) -> MapQuer
     if when not in ("latest", "peak"):
         when = pd.Timestamp(when).date().isoformat()          # raises on nonsense
     season = str(data.get("season") or "").strip()
-    if season and not re.fullmatch(r"20\d\d-\d\d", season):
+    if season and not re.fullmatch(r"20\d\d(-\d\d)?", season):
         raise ValueError(f"bad season {season!r}")
     kind = data.get("place_type")
+    named = [k for k in ("region", "state", "metro", "county") if str(data.get(k) or "").strip()]
+    if not named:
+        kind = "us"            # small models pick a place_type even when no place was named
+    elif kind not in named and len(named) == 1:
+        kind = named[0]        # ... or name a place under the wrong place_type
     if kind == "us":
         place = "us"
     elif kind == "region" and data.get("region") in REGIONS:
@@ -590,7 +608,8 @@ def resolve(query: MapQuery, values: pd.DataFrame, gaz: Gazetteer) -> MapQuery:
         week = latest
     elif query.when == "peak":
         season = query.season or _season_of(latest)
-        start = pd.Timestamp(int(season[:4]), 10, 1)
+        calendar = len(season) == 4                       # "2025": Jan 1 to Dec 31
+        start = pd.Timestamp(int(season[:4]), 1 if calendar else 10, 1)
         if not query.season and (latest - start).days < 16 * 7:
             # A season a few weeks old has no peak yet (it comes Dec-Feb): use the last one.
             weeks_in = (latest - start).days // 7 + 1
@@ -606,7 +625,8 @@ def resolve(query: MapQuery, values: pd.DataFrame, gaz: Gazetteer) -> MapQuery:
             week = latest
         else:
             week = series.idxmax()
-            query.notes.append(f"peak of the {season} season in {gaz.label(query.place)}: "
+            what = f"highest week of {season}" if calendar else f"peak of the {season} season"
+            query.notes.append(f"{what} in {gaz.label(query.place)}: "
                                f"week ending {week:%b} {week.day}, {week.year}")
     else:
         week = week_end_of(query.when)

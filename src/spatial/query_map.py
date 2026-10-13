@@ -142,7 +142,7 @@ def _panel(ans: Answer, gaz: Gazetteer, cells, unit: str, ticks=None) -> str:
     notes = "".join(f"<li>{e(n)}</li>" for n in text["notes"])
     return f"""
 <style>
- .spark-panel {{position:fixed;top:12px;left:56px;z-index:9999;width:410px;max-height:calc(100% - 40px);
+ .spark-panel {{position:fixed;top:12px;left:56px;z-index:9999;width:min(410px, 42vw);max-height:calc(100% - 40px);
    overflow-y:auto;background:rgba(255,255,255,.97);padding:12px 15px 14px;border-radius:8px;
    box-shadow:0 1px 6px rgba(0,0,0,.25);font:13px/1.4 -apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#0b0b0b}}
  .spark-panel .q {{font-size:16px;font-weight:600}}
@@ -194,7 +194,7 @@ def render(ans: Answer, gaz: Gazetteer) -> folium.Map:
     fills, cells, unit, ticks = _colors(frame, q.measure)
 
     fmap = folium.Map(location=ans.center, zoom_start=ans.zoom, tiles=None, control_scale=True,
-                      prefer_canvas=True)
+                      prefer_canvas=True, zoom_snap=0.1, zoom_delta=0.5)
     if regional:
         folium.TileLayer(ESRI_GRAY, attr="Tiles &copy; Esri", name="Basemap", control=False).add_to(fmap)
     fmap.get_root().header.add_child(folium.Element(
@@ -246,8 +246,22 @@ def render(ans: Answer, gaz: Gazetteer) -> folium.Map:
     labels.add_to(fmap)
     folium.LayerControl(collapsed=True).add_to(fmap)
     fmap.get_root().html.add_child(folium.Element(_panel(ans, gaz, cells, unit, ticks)))
-    if ans.bounds is not None:   # fit the place in the space right of the panel
-        xmin, ymin, xmax, ymax = ans.bounds
-        fmap.fit_bounds([[ymin, xmin], [ymax, xmax]], padding_top_left=(475, 12),
-                        padding_bottom_right=(12, 24))
+    # Fit every drawn county in the space right of the panel, measuring the
+    # panel rather than assuming its width, and refit when the window resizes.
+    # Fractional zoom (zoom_snap above) lets the fit fill that space instead of
+    # jumping a whole zoom level (2x) between window sizes.
+    xmin, ymin, xmax, ymax = frame.total_bounds
+    fmap.get_root().script.add_child(folium.Element(f"""
+document.addEventListener("DOMContentLoaded", function () {{
+  var map = {fmap.get_name()}, box = [[{ymin:.4f}, {xmin:.4f}], [{ymax:.4f}, {xmax:.4f}]];
+  function fit() {{
+    var panel = document.querySelector(".spark-panel"), left = 12;
+    if (panel && panel.offsetWidth < 0.6 * window.innerWidth) left = panel.offsetLeft + panel.offsetWidth + 12;
+    map.invalidateSize();
+    map.fitBounds(box, {{paddingTopLeft: [left, 12], paddingBottomRight: [12, 24], animate: false}});
+  }}
+  var timer;
+  window.addEventListener("resize", function () {{ clearTimeout(timer); timer = setTimeout(fit, 120); }});
+  fit();
+}});"""))
     return fmap
