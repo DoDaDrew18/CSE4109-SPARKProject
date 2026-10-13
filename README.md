@@ -145,6 +145,7 @@ label news     humans: labels/human_labels.csv   LLM: news.label → news.ground
 validate       news.agreement (Cohen's κ, LLM vs human)   news.baseline (VADER)
 align          align → data/county_week.parquet   (raises LeakError on any future row)
 model          nowcast → data/results/   (naive → AR+season → +weather → +wastewater → +news)
+check results  validate_results → validation_report.md   (sane predictions, Holm, small n, news placebo)
 place          spatial.hotspots (Getis-Ord Gi*) · spatial.map · spatial.satscan (export)
 ```
 
@@ -169,6 +170,7 @@ python -m src.news.baseline && python -m src.news.agreement   # → data/labels/
 
 # table, models, map
 python -m src.align && python -m src.nowcast
+python -m src.validate_results --placebo 19   # exits 1 on implausible predictions
 python -m src.spatial.map --week 2025-12-27 --out demo/map.html
 ```
 
@@ -212,7 +214,8 @@ src/ingest_noaa.py     NCEI + IEM weather, weekly features with availability lag
 src/fips.py            county name → FIPS (Census reference file)
 src/align.py           county_week table with leak checks
 src/nowcast.py         rolling-origin model ladder
-src/evaluate.py        MAE, R², gap closed, skill, Wilcoxon
+src/evaluate.py        MAE, R², gap closed, skill, Wilcoxon, Holm
+src/validate_results.py  checks on the results: sanity, Holm, small n, news placebo
 src/history.py         national HSA history → gradient-boosted weekly change
 src/figures.py         demo figures from data/results/
 src/news/              collect, fetch, label (LLM), ground, agreement, baseline, features

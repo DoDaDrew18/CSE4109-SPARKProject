@@ -133,3 +133,30 @@ def test_leave_one_metro_out_never_sees_the_held_out_metro(table):
                                     min_train=5)
     assert len(a) and set(a["fips"]) == {COOK} and set(a["held_out"]) == {"chi"}
     np.testing.assert_allclose(a["pred"].to_numpy(), b["pred"].to_numpy())
+
+
+def _no_official_train(n=60, active=3):
+    rng = np.random.default_rng(0)
+    label = rng.uniform(1.0, 5.0, n)
+    news = np.zeros(n)
+    news[np.argsort(label)[-active:]] = 1.0          # the rare news weeks are the peaks
+    return pd.DataFrame({"metro": "chi", "label": label,
+                         "temp_mean_f_0": 10 * label + rng.normal(0, 1, n),
+                         "news_n_0": news})
+
+
+def test_no_official_drops_features_with_too_little_support():
+    train = _no_official_train(active=3)
+    test = pd.DataFrame({"metro": ["chi"], "temp_mean_f_0": [40.0], "news_n_0": [1.0]})
+    with_news = nowcast.fit_predict_no_official(train, test, ["temp_mean_f_0", "news_n_0"])
+    without = nowcast.fit_predict_no_official(train, test, ["temp_mean_f_0"])
+    np.testing.assert_allclose(with_news, without)
+
+
+def test_no_official_is_clipped_to_training_labels():
+    train = _no_official_train()
+    test = pd.DataFrame({"metro": ["chi", "chi"], "temp_mean_f_0": [-200.0, 200.0],
+                         "news_n_0": [0.0, 0.0]})
+    pred = nowcast.fit_predict_no_official(train, test, ["temp_mean_f_0"])
+    assert pred.min() >= train["label"].min() - 1e-12
+    assert pred.max() <= train["label"].max() + 1e-12
