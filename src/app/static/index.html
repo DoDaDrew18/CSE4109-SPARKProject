@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SPARK Region Ask</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css">
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --ink: #16191d; --muted: #5d6673; --line: #e2e5ea;
+  --accent: #256abf; --accent-ink: #ffffff; --hot: #e8590c; --ok: #2b8a3e; --warn: #c27c0e; --bad: #c92a2a;
+  --chip: #eef2f7; --code: #f1f3f5;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --panel: #171b21; --ink: #e8ebef; --muted: #98a2b0; --line: #2a3039;
+    --accent: #6da7ec; --accent-ink: #0d1620; --chip: #222831; --code: #1e242c;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.app { display: grid; grid-template-columns: 1fr 420px; height: 100vh; }
+#map { height: 100%; }
+aside { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+h1 { font-size: 16px; margin: 0; display: flex; align-items: center; gap: 8px; }
+h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 6px; }
+.badge { font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 999px; background: var(--chip); color: var(--muted); }
+.sub { color: var(--muted); font-size: 12px; margin: 2px 0 0; }
+.card { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+label { font-size: 12px; color: var(--muted); }
+input[type=date], textarea { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; }
+textarea { width: 100%; resize: vertical; min-height: 64px; }
+button { font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--line); background: var(--chip); color: var(--ink); padding: 6px 10px; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; padding: 9px 14px; width: 100%; }
+button:disabled { opacity: .5; cursor: default; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-size: 12px; padding: 4px 9px; border-radius: 999px; }
+.agents { display: flex; flex-direction: column; gap: 4px; }
+.agent { display: grid; grid-template-columns: 10px 1fr auto; gap: 8px; align-items: center; font-size: 13px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--line); }
+.dot.running { background: var(--warn); animation: pulse 1s infinite; } .dot.done { background: var(--ok); } .dot.error { background: var(--bad); }
+@keyframes pulse { 50% { opacity: .35; } }
+.agent .meta { color: var(--muted); font-size: 12px; }
+.log { font-size: 11.5px; color: var(--muted); margin: 0 0 4px 18px; }
+#answer { white-space: pre-wrap; }
+#answer ul { margin: 6px 0; padding-left: 18px; white-space: normal; }
+.cite { display: inline-block; font-size: 11px; font-weight: 600; padding: 0 5px; margin: 0 1px; border-radius: 5px; background: var(--chip); color: var(--accent); cursor: pointer; border: 0; }
+.finding { border-top: 1px solid var(--line); padding: 8px 0; font-size: 13px; cursor: pointer; }
+.finding:first-child { border-top: 0; }
+.finding.active { background: var(--code); margin: 0 -12px; padding: 8px 12px; }
+.finding .fid { font-weight: 700; color: var(--accent); margin-right: 4px; }
+.finding .src { color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+.finding .src a { color: var(--muted); }
+.sev { display: inline-block; width: 34px; height: 5px; border-radius: 3px; background: var(--line); vertical-align: middle; margin-left: 6px; position: relative; overflow: hidden; }
+.sev i { position: absolute; inset: 0 auto 0 0; background: var(--hot); }
+.err { color: var(--bad); font-size: 13px; }
+.note { font-size: 12px; color: var(--muted); }
+.legend { background: var(--panel); color: var(--ink); padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); font-size: 12px; line-height: 1.3; }
+.legend .ramp { display: flex; height: 8px; width: 160px; margin: 4px 0 2px; }
+.legend .ramp span { flex: 1; }
+.legend .ends { display: flex; justify-content: space-between; color: var(--muted); }
+.layers { display: flex; gap: 4px; margin-top: 6px; }
+.layers button { font-size: 11px; padding: 2px 7px; }
+.layers button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.hint { position: absolute; z-index: 500; left: 56px; top: 12px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: 12.5px; box-shadow: 0 2px 8px rgba(0,0,0,.12); }
+.leaflet-container { background: var(--bg); }
+@media (max-width: 820px) {
+  .app { grid-template-columns: 1fr; grid-template-rows: 48vh auto; height: auto; }
+  aside { border-left: 0; border-top: 1px solid var(--line); }
+  .hint { left: 52px; right: 12px; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <div style="position:relative">
+    <div id="map"></div>
+    <div class="hint" id="hint">Draw a box or polygon (tools at left), or pick a metro →</div>
+  </div>
+  <aside>
+    <div>
+      <h1>Region Ask <span class="badge" id="llm">…</span></h1>
+      <p class="sub">Respiratory illness (COVID, flu, RSV) in any US area, using only data public on the chosen date.</p>
+    </div>
+
+    <div>
+      <h2>Area</h2>
+      <div class="chips" id="metros"></div>
+      <div class="card" id="area" style="margin-top:8px"><span class="note">No area selected.</span></div>
+    </div>
+
+    <div>
+      <h2>As of</h2>
+      <div class="row">
+        <input type="date" id="asof">
+        <button class="chip" data-date="2025-02-01">Feb 2025 flu peak</button>
+        <button class="chip" data-date="2026-01-10">Jan 2026</button>
+        <button class="chip" data-date="today">Today</button>
+      </div>
+    </div>
+
+    <div>
+      <h2>Question</h2>
+      <textarea id="q" placeholder="Is there a respiratory outbreak in this area?"></textarea>
+      <div class="chips" id="examples" style="margin:6px 0 10px"></div>
+      <button class="primary" id="ask" disabled>Select an area first</button>
+      <div class="err" id="err"></div>
+    </div>
+
+    <div id="agentsBox" hidden>
+      <h2>Agents <span class="note" id="planReason"></span></h2>
+      <div class="agents" id="agents"></div>
+    </div>
+
+    <div id="answerBox" hidden>
+      <h2>Answer</h2>
+      <div class="card"><div id="answer"></div><div class="note" id="citecheck" style="margin-top:6px"></div></div>
+    </div>
+
+    <div id="findingsBox" hidden>
+      <h2>Findings <span class="note" id="rejects"></span></h2>
+      <div class="card" id="findings"></div>
+    </div>
+
+    <p class="note">CSE 4109 SPARK project · data: CDC NSSP (Delphi), CDC NWSS, Open-Meteo, study news corpus, GDELT.
+      Retrospective research tool, not medical advice.</p>
+  </aside>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+<script>
+const RAMP = ["#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"];
+const HOT = "#e8590c";
+const METROS = {
+  "St. Louis": [[38.35, -90.85], [38.95, -89.95]], "Kansas City": [[38.8, -94.8], [39.3, -94.1]],
+  "Chicago": [[41.45, -88.3], [42.15, -87.5]], "Indianapolis": [[39.6, -86.4], [40.0, -85.9]],
+  "Memphis": [[34.95, -90.2], [35.4, -89.6]], "Louisville": [[37.95, -85.95], [38.4, -85.4]],
+};
+const EXAMPLES = [
+  "Is there a respiratory outbreak in this area?",
+  "Is flu rising here, and is it worse than in nearby counties?",
+  "What does wastewater say about COVID here?",
+  "Is weather or air quality making respiratory illness worse?",
+];
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+let geometry = null, outlines = null, layers = {}, findings = {}, workerNames = {}, activeLayer = "ed", busy = false;
+
+// ── map ──
+const map = L.map("map", { zoomControl: true }).setView([38.6, -90.2], 8);
+L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+  attribution: '&copy; OpenStreetMap &copy; CARTO', subdomains: "abcd", maxZoom: 18,
+}).addTo(map);
+const drawn = new L.FeatureGroup().addTo(map);
+const countyLayer = L.geoJSON(null, { style: countyStyle, onEachFeature: (f, l) => l.bindTooltip(() => tooltip(f)) }).addTo(map);
+map.addControl(new L.Control.Draw({
+  position: "topleft",
+  draw: { polyline: false, circle: false, marker: false, circlemarker: false,
+          rectangle: { shapeOptions: { color: "#256abf", weight: 2, fillOpacity: 0.04 } },
+          polygon: { shapeOptions: { color: "#256abf", weight: 2, fillOpacity: 0.04 } } },
+  edit: { featureGroup: drawn, edit: false, remove: true },
+}));
+map.on(L.Draw.Event.CREATED, (e) => { drawn.clearLayers(); drawn.addLayer(e.layer); setGeometry(e.layer.toGeoJSON().geometry); });
+map.on(L.Draw.Event.DELETED, () => { geometry = null; countyLayer.clearLayers(); $("area").innerHTML = '<span class="note">No area selected.</span>'; updateAsk(); });
+
+const legend = L.control({ position: "bottomleft" });
+legend.onAdd = () => { const d = L.DomUtil.create("div", "legend"); d.id = "legend"; d.hidden = true; L.DomEvent.disableClickPropagation(d); return d; };
+legend.addTo(map);
+
+function scaleFor(values) {
+  const v = Object.values(values).filter((x) => x != null).sort((a, b) => a - b);
+  if (!v.length) return null;
+  const lo = v[0], hi = Math.max(v[v.length - 1], lo + 0.01);
+  return { lo, hi, color: (x) => RAMP[Math.min(RAMP.length - 1, Math.floor(((x - lo) / (hi - lo)) * RAMP.length))] };
+}
+function countyStyle(f) {
+  const fips = f.properties.fips, L_ = layers[activeLayer];
+  const base = { color: "#5f6b7a", weight: 0.8, fillOpacity: 0.08, fillColor: "#9ec5f4" };
+  const hot = layers.hotspots?.classes?.[fips] || "";
+  if (L_ && L_.values && L_.values[fips] != null) Object.assign(base, { fillColor: L_.scale.color(L_.values[fips]), fillOpacity: 0.72 });
+  if (L_ && L_.values && L_.values[fips] == null) Object.assign(base, { fillColor: "#bbb", fillOpacity: 0.25, dashArray: "3 3" });
+  if (hot.startsWith("Hot")) Object.assign(base, { color: HOT, weight: 3 });
+  if (f.properties._hl) Object.assign(base, { color: "#111", weight: 3 });
+  return base;
+}
+function tooltip(f) {
+  const p = f.properties, rows = [`<b>${esc(p.name)}, ${esc(p.state)}</b>`, `pop ${Number(p.population || 0).toLocaleString()}`];
+  if (layers.ed) rows.push(`ED resp. share: ${layers.ed.values[p.fips] != null ? layers.ed.values[p.fips].toFixed(2) + "%" : "no data published"}`);
+  if (layers.nowcast?.values[p.fips] != null) rows.push(`Nowcast: ${layers.nowcast.values[p.fips].toFixed(2)}%`);
+  if (layers.hotspots?.classes?.[p.fips]) rows.push(`Gi*: ${esc(layers.hotspots.classes[p.fips])}`);
+  return rows.join("<br>");
+}
+function renderLegend() {
+  const d = $("legend"), L_ = layers[activeLayer];
+  const opts = ["ed", "nowcast"].filter((k) => layers[k]);
+  if (!opts.length) { d.hidden = true; return; }
+  d.hidden = false;
+  const title = { ed: `Respiratory % of ED visits, week ending ${layers.ed?.week_end}`, nowcast: `Nowcast, week ending ${layers.nowcast?.week_end}` }[activeLayer];
+  d.innerHTML = `<div>${esc(title)}</div>` + (L_ ? `<div class="ramp">${RAMP.map((c) => `<span style="background:${c}"></span>`).join("")}</div>
+    <div class="ends"><span>${L_.scale.lo.toFixed(1)}%</span><span>${L_.scale.hi.toFixed(1)}%</span></div>` : "")
+    + (layers.hotspots ? `<div style="margin-top:4px"><span style="color:${HOT};font-weight:700">▭</span> Gi* hot spot</div>` : "")
+    + `<div class="layers">${opts.map((k) => `<button class="${k === activeLayer ? "on" : ""}" data-layer="${k}">${k === "ed" ? "Published" : "Nowcast"}</button>`).join("")}</div>`;
+  d.querySelectorAll("[data-layer]").forEach((b) => b.onclick = () => { activeLayer = b.dataset.layer; countyLayer.setStyle(countyStyle); renderLegend(); });
+}
+
+// ── area ──
+async function setGeometry(g) {
+  geometry = g; $("err").textContent = ""; $("hint").hidden = true;
+  layers = {}; renderLegend();
+  try {
+    const r = await fetch("/api/region", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ geometry: g }) });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || "region lookup failed");
+    showRegion(data.region, data.outlines);
+  } catch (e) { geometry = null; $("err").textContent = e.message; $("area").innerHTML = '<span class="note">No area selected.</span>'; }
+  updateAsk();
+}
+function showRegion(region, geo) {
+  outlines = geo; countyLayer.clearLayers(); countyLayer.addData(geo);
+  const extra = region.fips.length > 1 ? ` · ${region.fips.length} counties` : "";
+  $("area").innerHTML = `<b>${esc(region.label)}</b><div class="note">${region.states.join(", ")}${extra} · population ${region.population.toLocaleString()}</div>`;
+}
+Object.entries(METROS).forEach(([name, b]) => {
+  const btn = document.createElement("button"); btn.className = "chip"; btn.textContent = name;
+  btn.onclick = () => { const rect = L.rectangle(b, { color: "#256abf", weight: 2, fillOpacity: 0.04 }); drawn.clearLayers(); drawn.addLayer(rect); map.fitBounds(b, { padding: [40, 40] }); setGeometry(rect.toGeoJSON().geometry); };
+  $("metros").appendChild(btn);
+});
+EXAMPLES.forEach((q) => { const b = document.createElement("button"); b.className = "chip"; b.textContent = q; b.onclick = () => { $("q").value = q; }; $("examples").appendChild(b); });
+document.querySelectorAll("[data-date]").forEach((b) => b.onclick = () => { $("asof").value = b.dataset.date === "today" ? $("asof").max : b.dataset.date; });
+function updateAsk() { $("ask").disabled = !geometry || busy; $("ask").textContent = busy ? "Working…" : geometry ? "Ask" : "Select an area first"; }
+
+// ── ask ──
+$("ask").onclick = ask;
+$("q").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) ask(); });
+async function ask() {
+  if (!geometry || busy) return;
+  busy = true; updateAsk(); $("err").textContent = "";
+  findings = {}; layers = {}; renderLegend(); countyLayer.setStyle(countyStyle);
+  $("agents").innerHTML = ""; $("findings").innerHTML = ""; $("answer").innerHTML = ""; $("citecheck").textContent = ""; $("rejects").textContent = ""; $("planReason").textContent = "";
+  ["agentsBox", "answerBox", "findingsBox"].forEach((id) => $(id).hidden = true);
+  let answer = "", rejected = 0;
+  try {
+    const r = await fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ geometry, question: $("q").value || $("q").placeholder, as_of: $("asof").value || null }) });
+    const reader = r.body.getReader(), dec = new TextDecoder(); let buf = "";
+    for (;;) {
+      const { value, done } = await reader.read(); if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i; while ((i = buf.indexOf("\n\n")) >= 0) {
+        const line = buf.slice(0, i); buf = buf.slice(i + 2);
+        if (!line.startsWith("data: ")) continue;
+        const e = JSON.parse(line.slice(6));
+        if (e.type === "error") { $("err").textContent = e.message; }
+        else if (e.type === "region") showRegion(e.region, e.outlines);
+        else if (e.type === "plan") { $("agentsBox").hidden = false; $("planReason").textContent = `· ${e.reason}`; $("llm").textContent = `${e.llm} · ${e.model}`;
+          e.workers.forEach((w) => { workerNames[w.id] = w.name; $("agents").insertAdjacentHTML("beforeend",
+            `<div class="agent" id="ag-${w.id}"><span class="dot"></span><span>${esc(w.name)}</span><span class="meta"></span></div><div class="log" id="log-${w.id}"></div>`); }); }
+        else if (e.type === "agent_status") { const a = $(`ag-${e.worker}`); if (!a) continue;
+          a.querySelector(".dot").className = `dot ${e.status}`;
+          if (e.status === "done") a.querySelector(".meta").textContent = `${e.findings} finding${e.findings === 1 ? "" : "s"} · ${e.seconds}s`; }
+        else if (e.type === "agent_log") { const l = $(`log-${e.worker}`); if (l) l.textContent = e.message; }
+        else if (e.type === "layer") { if (e.values) e.scale = scaleFor(e.values); if (e.kind !== "hotspots" && !e.scale) continue;
+          layers[e.kind] = e; countyLayer.setStyle(countyStyle); renderLegend(); }
+        else if (e.type === "finding") addFinding(e.finding);
+        else if (e.type === "rejected") { rejected++; $("rejects").textContent = `· ${rejected} dropped by validator`; }
+        else if (e.type === "answer_delta") { $("answerBox").hidden = false; answer += e.text; $("answer").innerHTML = renderAnswer(answer); }
+        else if (e.type === "answer_done") { $("citecheck").textContent = e.unknown.length ? `Cites unknown findings: ${e.unknown.join(", ")}` :
+            e.uncited_answer ? "The answer cites no findings; read it with care." : `Cites ${e.cited.length} findings.`; bindCites(); }
+      }
+    }
+  } catch (err) { $("err").textContent = String(err); }
+  busy = false; updateAsk();
+}
+function addFinding(f) {
+  findings[f.id] = f; $("findingsBox").hidden = false;
+  const src = f.source_url ? `<a href="${esc(f.source_url)}" target="_blank" rel="noopener">${esc(f.source)}</a>` : esc(f.source);
+  $("findings").insertAdjacentHTML("beforeend", `<div class="finding" id="fd-${f.id}"><span class="fid">${f.id}</span>${esc(f.claim)}
+    <div class="src">${esc(workerNames[f.worker] || f.worker)} · public ${esc(f.known_by)} · ${src}<span class="sev" title="severity ${f.severity}"><i style="width:${Math.round(f.severity * 100)}%"></i></span></div></div>`);
+  $(`fd-${f.id}`).onclick = (ev) => { if (ev.target.tagName !== "A") focusFinding(f.id); };
+}
+function renderAnswer(text) {
+  let h = esc(text).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+  h = h.replace(/(^|\n)((?:[-•] .*(?:\n|$))+)/g, (m, pre, block) => `${pre}<ul>${block.trim().split("\n").map((l) => `<li>${l.replace(/^[-•] /, "")}</li>`).join("")}</ul>`);
+  return h.replace(/\[(F\d+)\]/g, '<button class="cite" data-f="$1">$1</button>');
+}
+function bindCites() { document.querySelectorAll(".cite").forEach((b) => b.onclick = () => focusFinding(b.dataset.f)); }
+function focusFinding(id) {
+  document.querySelectorAll(".finding.active").forEach((x) => x.classList.remove("active"));
+  const el = $(`fd-${id}`); if (!el) return; el.classList.add("active"); el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  const set = new Set(findings[id]?.fips || []);
+  countyLayer.eachLayer((l) => { l.feature.properties._hl = set.has(l.feature.properties.fips); });
+  countyLayer.setStyle(countyStyle);
+}
+$("answer").addEventListener("click", (e) => { if (e.target.classList.contains("cite")) focusFinding(e.target.dataset.f); });
+
+// ── config ──
+fetch("/api/config").then((r) => r.json()).then((c) => {
+  $("llm").textContent = `${c.llm} · ${c.model}`;
+  $("asof").min = c.first_date; $("asof").max = c.today; $("asof").value = c.today;
+});
+</script>
+</body>
+</html>

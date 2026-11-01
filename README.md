@@ -54,6 +54,12 @@ These shaped the design more than anything we planned.
    NCEI over 2024).
 7. **`as_of` takes an epiweek, not a date.** `as_of=20260215` is silently read
    as a far-future week and returns the *latest* data. The ingester refuses it.
+8. **Delphi's covidcast API is retired for data after 2026-09-22** (checked
+   2026-11-01: "as_of is entirely after the cutoff"; replaced by cast-api /
+   epidata-etl). The last `as_of` it accepts is epiweek 202638, so
+   `python -m src.ingest_nssp` no longer gets new weeks. Fresh NSSP now comes
+   only from CDC's own table via `python -m src.ingest_cdc_nssp`, which must be
+   run weekly because CDC overwrites it in place.
 
 ## Results so far (no news yet)
 
@@ -165,7 +171,8 @@ place          spatial.hotspots (Getis-Ord Gi*) · spatial.map · spatial.satsca
 
 ```bash
 # weekly collection: run every week; a missed NWSS Friday is lost for good
-python -m src.ingest_nssp                 # today's NSSP vintage, all counties
+python -m src.ingest_cdc_nssp             # CDC's NSSP table (Delphi stopped after 2026-09-22)
+python -m src.ingest_nssp                 # Delphi NSSP: frozen at epiweek 202638 (finding 8)
 python -m src.ingest_nwss                 # today's wastewater vintage
 python -m src.ingest_noaa                 # weather through yesterday
 python -m src.ingest_airquality           # CAMS PM2.5 / ozone through yesterday
@@ -187,6 +194,37 @@ python -m src.validate_results --placebo 19   # exits 1 on implausible predictio
 python -m src.validate_results --inject --inject-scale 1,3   # synthetic-news power test
 python -m src.spatial.map --week 2025-12-27 --out demo/map.html
 ```
+
+## Region Ask: select an area, ask an outbreak question
+
+```bash
+python -m src.app                         # http://127.0.0.1:8050
+```
+
+Draw a box or polygon on the map (or click a metro), pick an **as-of date**,
+and ask, e.g. "Is flu rising here, and is it worse than nearby counties?".
+Agents pull data for the counties inside the shape and drop findings on the
+map, and an LLM writes a short answer that cites them (`[F3]`). The
+idea comes from Noah's CalHacks 13 project (Coordinate); the data and rules
+are this study's:
+
+- **Everything is as of the date.** NSSP is read from the vintage public that
+  day (Delphi `as_of`, cached in `raw/app_cache/`), and every finding carries
+  the date it became public. `src/app/validate.py` drops any finding dated
+  after the as-of date, the same leak rule `align` enforces.
+- **Agents** (`src/app/workers.py`): ED visits (NSSP), the HistGBM nowcast
+  (skipped when the newest data is >3 weeks old), Gi* hot spots against
+  surrounding counties, NWSS wastewater (labeled proxy before 2026-04-17),
+  Open-Meteo weather and CAMS air quality, and news (labeled study corpus +
+  live GDELT headlines).
+- **Answers:** Claude (`claude-opus-5-5`) when `ANTHROPIC_API_KEY` is set,
+  else local Ollama `qwen3:8b`, else a rule-based summary. Force one with
+  `SPARK_APP_LLM=claude|ollama|template`. Findings are screened for prompt
+  injection before the model sees them, and citations of findings that don't
+  exist are flagged.
+- Gaps are shown, not hidden: Missouri counties before June 2026 come back as
+  "no data published", and dates after the Delphi cutoff say where the data
+  stops unless a CDC vintage (`ingest_cdc_nssp`) covers them.
 
 ## Data collection protocol
 
@@ -210,7 +248,7 @@ git clone https://github.com/DoDaDrew18/CSE4109-SPARKProject.git
 cd CSE4109-SPARKProject
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt     # wheels only; no GDAL or compiler needed
-python -m pytest tests/ -q          # expect 169 passed, all offline
+python -m pytest tests/ -q          # expect 234 passed, all offline
 ```
 
 Delphi limits anonymous use to ~60 requests/hour. A free key
@@ -234,6 +272,7 @@ src/history.py         national HSA history → gradient-boosted weekly change
 src/figures.py         demo figures from data/results/
 src/news/              collect, fetch, label (LLM), ground, agreement, baseline, features
 src/spatial/           shapes, hot spots (Gi*, local Moran), map, SaTScan export
+src/app/               Region Ask web app: region → counties, vintage data, agents, LLM answer
 labels/                article catalog + human label template (committed)
 docs/                  overview, schematic, pipeline chart, labeling guide
 demo/                  St. Louis map views + screenshots
