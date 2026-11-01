@@ -32,7 +32,7 @@ Labels -- answer key only
 scoring. They are not "known on as_of"; :data:`LABEL_COLUMNS` names them so
 the model code can assert they never enter a feature matrix.
 
-Optional feature sources (weather, wastewater, news) are loaded lazily through
+Optional feature sources (weather, wastewater, air quality, news) are loaded lazily through
 a shared contract, ``weekly_features(as_of, fips) -> [fips, week_end, ...]``.
 A missing module or missing data logs a warning and the columns are simply
 absent; every loader is checked for rows dated after ``as_of``.
@@ -65,6 +65,7 @@ FEATURE_LOADERS = {
     "src.ingest_noaa": ("temp_mean_f", "temp_min_f", "temp_max_f", "dewpoint_f",
                         "rh_mean", "precip_in", "n_days"),
     "src.ingest_nwss": ("ww_covid", "ww_flu", "ww_rsv", "ww_n_sites"),
+    "src.ingest_airquality": ("pm25", "ozone"),
     "src.news.features": ("news_n", "news_concern"),
 }
 

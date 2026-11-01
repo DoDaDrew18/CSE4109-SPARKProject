@@ -107,6 +107,7 @@ WINDOW = 52
 MIN_TRAIN = 30
 RIDGE = 1.0
 LOG_FLOOR = 0.05      # % of ED visits; below NSSP's reporting resolution
+MIN_SUPPORT = 10      # no-official rungs: training rows a feature needs to be non-zero in
 SETTLE_WEEKS = 8
 RESULTS = Path("data/results")
 
@@ -323,9 +324,16 @@ def fit_predict_no_official(train: pd.DataFrame, test: pd.DataFrame, columns,
     keeps a zero indicator and falls back to the pooled intercept instead of
     silently inheriting a reference metro's level. An empty ``columns`` gives
     the pooled training mean on the log scale -- the baseline to beat.
+
+    Two guards, because without an ED anchor nothing pulls a bad fit back:
+    a column non-zero in fewer than ``MIN_SUPPORT`` training rows is dropped
+    (news early on: a slope fitted to three peak weeks turned one article
+    into a 3x prediction), and the result is clipped to the training labels'
+    range (the exponentiated linear fit otherwise ran to 2-5x anything seen).
     """
     ridge = RIDGE if ridge is None else ridge
     y = _log(train["label"])
+    columns = [c for c in columns if (train[c].fillna(0) != 0).sum() >= MIN_SUPPORT]
     if not columns:
         return np.full(len(test), float(np.exp(y.mean())))
     x_tr, center = _design(train, columns, [])
@@ -333,7 +341,8 @@ def fit_predict_no_official(train: pd.DataFrame, test: pd.DataFrame, columns,
     metros = sorted(METROS)
     hot = lambda f: np.column_stack([(f["metro"] == m).to_numpy(float) for m in metros])
     x_tr, x_te = np.column_stack([x_tr, hot(train)]), np.column_stack([x_te, hot(test)])
-    return np.exp(_ridge(x_tr, y, x_te, x_tr.shape[1], ridge))
+    pred = np.exp(_ridge(x_tr, y, x_te, x_tr.shape[1], ridge))
+    return np.clip(pred, train["label"].min(), train["label"].max())
 
 
 ARIMA_ORDER = (2, 1, 0)
@@ -393,7 +402,7 @@ def fit_predict_gbm_local(model, train: pd.DataFrame, test: pd.DataFrame, column
 
 def rolling_origin(table: pd.DataFrame, rungs=None, label_lag: int = LABEL_LAG,
                    window: int = WINDOW, min_train: int = MIN_TRAIN,
-                   history: pd.DataFrame | None = None) -> pd.DataFrame:
+                   history: pd.DataFrame | None = None, refitter=None) -> pd.DataFrame:
     """Fit every rung at every origin; return one row per (rung, fips, origin).
 
     Ladder rungs predict county-weeks that have some official value on the
@@ -401,14 +410,15 @@ def rolling_origin(table: pd.DataFrame, rungs=None, label_lag: int = LABEL_LAG,
     so they can be scored on the rows the ladder cannot touch. The answer key
     (``ed_resp_final``, ``ed_resp_first``) is joined after prediction.
     ``history`` is ``src.history.examples(...)``; without it the
-    ``history:`` rungs (6-10) are skipped.
+    ``history:`` rungs (6-10) are skipped. ``refitter`` replaces the default
+    ``Refitter(history)``, e.g. to reuse fitted models across repeated runs.
     """
     feats = features(table)
     rungs = available_rungs(feats) if rungs is None else rungs
-    if history is None:
+    if history is None and refitter is None:
         rungs = [r for r in rungs if not r.model.startswith(("history:", "gbm_local"))]
     else:
-        refit = hist_mod.Refitter(history)
+        refit = refitter or hist_mod.Refitter(history)
     groups = group_columns(feats)
     keys = table.loc[table["lag"] == 0, ["fips", "as_of", "week_end", "metro", "home",
                                           *LABEL_COLUMNS]]

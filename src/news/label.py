@@ -30,6 +30,9 @@ Design choices, each aimed at the team's main worry (made-up labels):
   with itself -- an honest number instead of an assumed one.
 * **Caching.** The guide is a stable prefix marked ``cache_control``, so after
   the first article only the article text is billed at the full input rate.
+* **Prompt-injection screen.** Article text is scraped web content; rows
+  whose text contains instruction-like markers get ``injection_marker``
+  (``src.news.injection``), and ``ground`` refuses quotes that contain one.
 * **Provenance.** Each row stores the requested model, the model that actually
   served it (checked against the request), the prompt hash and a UTC
   timestamp.
@@ -117,7 +120,7 @@ OUTPUT_SCHEMA = {
 QUOTE_COLUMNS = ("fips_quote", "illness_quote", "concern_quote", "event_quote")
 LABEL_COLUMNS = ("article_id", "labeler", "run", "model", "served_model", "prompt_hash",
                  "labeled_at", "published", "relevant", "fips", "illness", "concern",
-                 "event_week", *QUOTE_COLUMNS, "stop_reason", "error",
+                 "event_week", *QUOTE_COLUMNS, "injection_marker", "stop_reason", "error",
                  "input_tokens", "cache_read_tokens", "output_tokens")
 
 
@@ -201,6 +204,7 @@ def label_article(client, article: dict, text: str, system: str, run: int = 1,
                   model: str = MODEL_ID, phash: str | None = None) -> dict:
     """Label one article; API errors are recorded on the row, not raised,
     except authentication errors, which would fail every article the same way."""
+    from src.news.injection import injection_marker
     from src.news.ollama_client import OllamaError
     try:
         import anthropic
@@ -213,6 +217,7 @@ def label_article(client, article: dict, text: str, system: str, run: int = 1,
            "model": model, "served_model": None, "prompt_hash": phash or prompt_hash(system),
            "labeled_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
            "published": article.get("published"), "stop_reason": None,
+           "injection_marker": injection_marker(f"{article.get('title') or ''}\n{text}"),
            "input_tokens": None, "cache_read_tokens": None, "output_tokens": None}
     try:
         response = client.messages.create(**build_request(article, text, system, model))
@@ -281,7 +286,8 @@ def label_corpus(manifest: pd.DataFrame, texts: dict[str, str], client, runs: in
             row = label_article(client, article, texts.get(aid, ""), system, run, model, phash)
             rows.append(row)
             progress(f"run {run} {aid}: relevant={row['relevant']} fips={row['fips']} "
-                     f"concern={row['concern']}" + (f" ERROR {row['error']}" if row["error"] else ""))
+                     f"concern={row['concern']}" + (f" ERROR {row['error']}" if row["error"] else "")
+                     + (f" INJECTION? {row['injection_marker']!r}" if row["injection_marker"] else ""))
 
     result = pd.concat([d for d in (existing, _to_frame(rows)) if len(d)], ignore_index=True) \
         if rows or len(existing) else _to_frame([])

@@ -54,6 +54,12 @@ These shaped the design more than anything we planned.
    NCEI over 2024).
 7. **`as_of` takes an epiweek, not a date.** `as_of=20260215` is silently read
    as a far-future week and returns the *latest* data. The ingester refuses it.
+8. **Delphi's covidcast API is retired for data after 2026-09-22** (checked
+   2026-11-01: "as_of is entirely after the cutoff"; replaced by cast-api /
+   epidata-etl). The last `as_of` it accepts is epiweek 202638, so
+   `python -m src.ingest_nssp` no longer gets new weeks. Fresh NSSP now comes
+   only from CDC's own table via `python -m src.ingest_cdc_nssp`, which must be
+   run weekly because CDC overwrites it in place.
 
 ## Results so far (no news yet)
 
@@ -110,6 +116,18 @@ Read this as a lead, not a result:
 - On the 36 scored weeks that had news, the median change is about zero
   (p = 0.56); the mean gain is a few large peak-week corrections.
 - LLM labels have no human agreement yet (`python -m src.news.agreement`).
+- **The test is underpowered at this corpus size.** Replacing real news with
+  synthetic article-weeks of known timing (`python -m src.validate_results
+  --inject --inject-scale 1,3`, 5 repeats each): with as many article-weeks
+  as the real corpus, perfectly timed news (every one on a top-decile ED
+  rise) gains 0.029 MAE and is detected (p < 0.05) in 3 of 5 repeats;
+  half-right timing is never detected; random timing never is (placebo
+  check). With 3x the articles, perfect timing is detected 5 of 5 times
+  (gain 0.079). The real gain (0.040) is larger than perfect timing gives
+  at the same size, which fits "a few large peak-week corrections" better
+  than a steady signal.
+- Article text is screened for prompt-injection markers before labeling
+  (`src/news/injection.py`); none of the 224 fetched texts matches.
 
 **Ablation** (`data/results/metrics_ablation.csv`): without the season
 harmonics the gain falls to +7%, and without momentum to +14%. Dropping the
@@ -157,7 +175,7 @@ official value, 3.2% for the week ending Dec 13, trailed that week's settled
 | **NOAA NCEI** + **IEM ASOS** | Daily temp, precip (NCEI); dew point, humidity (IEM); one airport per metro, no key | `src/ingest_noaa.py` | ✅ 2024-01 → today |
 | **Local news** (web search + GDELT GKG files) | 196 candidate articles, 173 with text; 82 St. Louis | `src/news/collect.py`, `src/news/fetch.py` | ✅ ready to hand-label |
 | Census county shapes + population | Map, hot spots, SaTScan inputs | `src/spatial/shapes.py` | ✅ |
-| EPA AirNow | PM2.5, ozone | – | Deferred |
+| **CAMS air quality** via Open-Meteo | PM2.5, ozone per county (modeled, not vintaged; 7-day lag); St. Louis city and County share one grid cell | `src/ingest_airquality.py` | ✅ 2024-01 → today, in `align`; no model rung yet |
 
 ## Pipeline
 
@@ -168,6 +186,7 @@ label news     humans: labels/human_labels.csv   LLM: news.label → news.ground
 validate       news.agreement (Cohen's κ, LLM vs human)   news.baseline (VADER)
 align          align → data/county_week.parquet   (raises LeakError on any future row)
 model          nowcast → data/results/   (naive → AR+season → +weather → +wastewater → +news)
+check results  validate_results → validation_report.md   (sane predictions, Holm, small n, news placebo)
 place          spatial.hotspots (Getis-Ord Gi*) · spatial.map · spatial.satscan (export)
 ```
 
@@ -175,9 +194,11 @@ place          spatial.hotspots (Getis-Ord Gi*) · spatial.map · spatial.satsca
 
 ```bash
 # weekly collection: run every week; a missed NWSS Friday is lost for good
-python -m src.ingest_nssp                 # today's NSSP vintage, all counties
+python -m src.ingest_cdc_nssp             # CDC's NSSP table (Delphi stopped after 2026-09-22)
+python -m src.ingest_nssp                 # Delphi NSSP: frozen at epiweek 202638 (finding 8)
 python -m src.ingest_nwss                 # today's wastewater vintage
 python -m src.ingest_noaa                 # weather through yesterday
+python -m src.ingest_airquality           # CAMS PM2.5 / ozone through yesterday
 
 # one-time history
 python -m src.backfill_nssp               # study-county vintages since 202416 (resumable)
@@ -194,12 +215,45 @@ python -m src.news.baseline && python -m src.news.agreement   # → data/labels/
 
 # table, models, map
 python -m src.align && python -m src.nowcast
+python -m src.validate_results --placebo 19   # exits 1 on implausible predictions
+python -m src.validate_results --inject --inject-scale 1,3   # synthetic-news power test
 python -m src.spatial.map --week 2025-12-27 --out demo/map.html
 
 # ask the map in plain English (Demo II); needs the CDC CSV in raw/cdc_nssp/
 python -m src.spatial.app                 # browser: type a question, get map + answer
 python -m src.spatial.query "where was flu rising around St. Louis at Christmas 2025?"
 ```
+
+## Region Ask: select an area, ask an outbreak question
+
+```bash
+python -m src.app                         # http://127.0.0.1:8050
+```
+
+Draw a box or polygon on the map (or click a metro), pick an **as-of date**,
+and ask, e.g. "Is flu rising here, and is it worse than nearby counties?".
+Agents pull data for the counties inside the shape and drop findings on the
+map, and an LLM writes a short answer that cites them (`[F3]`). The
+idea comes from Noah's CalHacks 13 project (Coordinate); the data and rules
+are this study's:
+
+- **Everything is as of the date.** NSSP is read from the vintage public that
+  day (Delphi `as_of`, cached in `raw/app_cache/`), and every finding carries
+  the date it became public. `src/app/validate.py` drops any finding dated
+  after the as-of date, the same leak rule `align` enforces.
+- **Agents** (`src/app/workers.py`): ED visits (NSSP), the HistGBM nowcast
+  (skipped when the newest data is >3 weeks old), Gi* hot spots against
+  surrounding counties, NWSS wastewater (labeled proxy before 2026-04-17),
+  Open-Meteo weather and CAMS air quality, and news (labeled study corpus +
+  live GDELT headlines).
+- **Answers:** Claude (`claude-opus-5-5`) when `ANTHROPIC_API_KEY` is set,
+  else local Ollama `qwen3:8b`, else a rule-based summary. Force one with
+  `SPARK_APP_LLM=claude|ollama|template`. Findings are screened for prompt
+  injection before the model sees them, and citations of findings that don't
+  exist are flagged.
+- Gaps are shown, not hidden: Missouri counties before June 2026 come back as
+  "no data published", and dates after the Delphi cutoff say where the data
+  stops unless a CDC vintage (`ingest_cdc_nssp`) covers them.
 
 ## Data collection protocol
 
@@ -223,7 +277,7 @@ git clone https://github.com/DoDaDrew18/CSE4109-SPARKProject.git
 cd CSE4109-SPARKProject
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt     # wheels only; no GDAL or compiler needed
-python -m pytest tests/ -q          # expect 239 passed, all offline (macOS: brew install libomp)
+python -m pytest tests/ -q          # expect 301 passed, all offline (macOS: brew install libomp)
 ```
 
 Delphi limits anonymous use to ~60 requests/hour. A free key
@@ -241,13 +295,15 @@ src/ingest_noaa.py     NCEI + IEM weather, weekly features with availability lag
 src/fips.py            county name → FIPS (Census reference file)
 src/align.py           county_week table with leak checks
 src/nowcast.py         rolling-origin model ladder
-src/evaluate.py        MAE, R², gap closed, skill, Wilcoxon
+src/evaluate.py        MAE, R², gap closed, skill, Wilcoxon, Holm
+src/validate_results.py  checks on the results: sanity, Holm, small n, news placebo
 src/history.py         national HSA history → gradient-boosted weekly change
 src/figures.py         demo figures from data/results/
 src/news/              collect, fetch, label (LLM), label_app (humans), ground, agreement,
-                       baseline, features
+                       baseline, features, injection screen
 src/spatial/           shapes, hot spots (Gi*, local Moran), map, SaTScan export,
                        query + query_map + app (natural-language map, Demo II)
+src/app/               Region Ask web app: region → counties, vintage data, agents, LLM answer
 labels/                article catalog, labeling order, hand labels per labeler (committed)
 docs/                  overview, schematic, pipeline chart, labeling guide
 demo/                  St. Louis map views + screenshots

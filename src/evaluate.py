@@ -103,6 +103,25 @@ def wilcoxon_paired(err_a, err_b) -> dict:
     return result
 
 
+def holm(pvalues) -> np.ndarray:
+    """Holm-Bonferroni adjusted p-values for one family of tests.
+
+    The k-th smallest of m p-values is multiplied by (m - k + 1), then made
+    monotone so a smaller raw p never gets a larger adjusted one. NaNs are
+    left out of the family and stay NaN.
+    """
+    p = np.asarray(pvalues, dtype=float)
+    out = np.full(p.shape, np.nan)
+    ok = np.flatnonzero(np.isfinite(p))
+    if not len(ok):
+        return out
+    order = ok[np.argsort(p[ok], kind="stable")]
+    m = len(order)
+    adj = np.minimum(1.0, np.maximum.accumulate(p[order] * (m - np.arange(m))))
+    out[order] = adj
+    return out
+
+
 def dedupe_series(scored: pd.DataFrame) -> pd.DataFrame:
     """Drop county-weeks that are exact copies of another county in the same metro.
 

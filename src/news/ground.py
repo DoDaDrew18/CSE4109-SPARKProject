@@ -24,6 +24,10 @@ audit anything that was not an exact match):
                      a near-miss quote flips the meaning, so they must match.
 
 Quotes under ``MIN_WORDS`` words are rejected: "flu cases" is in every article.
+A quote containing a prompt-injection marker (``src.news.injection``) is
+rejected with method ``injection`` even if it is in the article: text written
+to steer a model is not evidence. ``article_injection`` records the first
+marker found anywhere in the article, for review.
 
 County claims get a second check: the ``fips_quote`` must name the county, its
 city, or a place in it (``PLACE_ALIASES``). A quote that proves "flu is rising"
@@ -41,6 +45,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.news.injection import injection_marker
 from src.study import STUDY_FIPS
 
 __all__ = ["FUZZY_MIN", "MIN_WORDS", "PLACE_ALIASES", "QUOTE_FIELDS", "Match",
@@ -121,7 +126,7 @@ def _words(text: str) -> list[str]:
 @dataclass(frozen=True)
 class Match:
     found: bool
-    method: str        # exact | nopunct | ellipsis | fuzzy | too_short | missing | not_found
+    method: str        # exact | nopunct | ellipsis | fuzzy | too_short | missing | not_found | injection
     score: float
 
 
@@ -241,6 +246,8 @@ def ground_row(row: dict, text: str, strict_place: bool = True,
             out[f"grounded_{field}"], out[f"{field}_match"], out[f"{field}_score"] = True, "not_needed", None
             continue
         m = find_quote(row.get(qcol), text, min_ratio)
+        if m.found and injection_marker(row.get(qcol)):
+            m = Match(False, "injection", m.score)
         out[f"grounded_{field}"], out[f"{field}_match"], out[f"{field}_score"] = m.found, m.method, m.score
         if m.found:
             any_grounded = True
@@ -254,6 +261,7 @@ def ground_row(row: dict, text: str, strict_place: bool = True,
         if not ok and strict_place:
             out["fips"], out["grounded_fips"] = None, False
 
+    out["article_injection"] = injection_marker(text)
     out["relevant_raw"] = relevant
     out["grounded_relevant"] = True
     if relevant is True and not any_grounded:
@@ -305,6 +313,11 @@ def summarize(grounded: pd.DataFrame) -> pd.DataFrame:
                     "grounded": int(grounded.loc[checked, "fips_place_ok"].astype(bool).sum()),
                     "rate": float(grounded.loc[checked, "fips_place_ok"].astype(bool).mean())
                     if checked.any() else float("nan")})
+    if "article_injection" in grounded:
+        flagged = grounded["article_injection"].notna()
+        out.append({"field": "article has injection marker", "claims": int(len(grounded)),
+                    "grounded": int(flagged.sum()),
+                    "rate": float(flagged.mean()) if len(grounded) else float("nan")})
     df = pd.DataFrame(out)
     methods = [c for c in df.columns if c not in ("field", "claims", "grounded", "rate")]
     df[methods] = df[methods].fillna(0).astype(int)
