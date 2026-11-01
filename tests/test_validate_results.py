@@ -6,6 +6,7 @@ import pytest
 
 from src.evaluate import holm
 from src.validate_results import (OriginCache, adjust_tests, ceiling_of, check_predictions,
+                                  inject_news, inject_power,
                                   placebo_pvalue, shuffle_news, small_groups)
 
 
@@ -105,3 +106,48 @@ def test_placebo_pvalue():
     runs = pd.DataFrame({"news": ["real"] + ["shuffled"] * 4,
                          "gain_mae": [0.03, 0.01, 0.04, -0.02, 0.0]})
     assert placebo_pvalue(runs) == pytest.approx(2 / 5)
+
+
+def _peak_table():
+    """Two counties, 20 weeks; county 1 rises sharply in weeks 5 and 12."""
+    weeks = pd.date_range("2025-01-04", periods=20, freq="7D")
+    rows = []
+    for f in ("1", "2"):
+        final = np.ones(20)
+        if f == "1":
+            final[5:] *= 3.0
+            final[12:] *= 2.0
+        for i, w in enumerate(weeks):
+            for lag in (0, 1):
+                rows.append({"fips": f, "week_end": w, "as_of": w + pd.Timedelta(weeks=lag),
+                             "lag": lag, "ed_resp": 1.0, "ed_resp_final": final[i],
+                             "news_n": 1.0 if i in (2, 3) else np.nan,
+                             "news_concern": 2.0 if i in (2, 3) else np.nan})
+    return pd.DataFrame(rows)
+
+
+def test_inject_news_full_precision_lands_on_peaks():
+    table = _peak_table()
+    out = inject_news(table, 1.0, np.random.default_rng(0))
+    assert list(out.columns) == list(table.columns) and len(out) == len(table)
+    weekly = out[out["fips"] == "1"].drop_duplicates("week_end").reset_index(drop=True)
+    marked = set(weekly.index[weekly["news_n"] > 0])
+    assert marked == {5, 12}                       # same count as the real news (2)
+    assert (out.groupby(["fips", "week_end"])["news_n"].nunique(dropna=False) == 1).all()
+    assert out["ed_resp"].equals(table["ed_resp"])
+
+
+def test_inject_news_scale_and_zero_precision():
+    table = _peak_table()
+    out = inject_news(table, 0.0, np.random.default_rng(0), scale=3)
+    for f in ("1", "2"):
+        weekly = out[out["fips"] == f].drop_duplicates("week_end")
+        assert (weekly["news_n"] > 0).sum() == 6
+        assert set(weekly.loc[weekly["news_n"] > 0, "news_concern"]) == {2.0}
+
+
+def test_inject_power_counts_only_significant_gains():
+    runs = pd.DataFrame({"scale": 1.0, "precision": [1.0] * 4, "rep": range(4), "n": 50,
+                         "gain_mae": [0.1, 0.1, -0.1, 0.1], "pvalue": [0.01, 0.2, 0.01, 0.04]})
+    out = inject_power(runs)
+    assert out.loc[0, "power"] == pytest.approx(0.5) and out.loc[0, "reps"] == 4

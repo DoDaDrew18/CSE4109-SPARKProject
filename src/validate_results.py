@@ -28,6 +28,19 @@ models; this module asks whether the scores can be believed:
    improvement of rung 12 over 11 is extra parameters, not information.
    p = (1 + #shuffles with gain >= real gain) / (K + 1); K = 19 gives a
    smallest possible p of 0.05.
+5. **The test could see a real effect at all** (``--inject``). The mirror
+   image of the placebo: real news is replaced by *synthetic* news whose
+   timing is known to carry information, and rungs 11 and 12 are rerun. Each
+   county gets ``scale`` x as many article-weeks as it really has (same
+   sparsity at scale 1); a share ``precision`` of them land on weeks where
+   the final ED share rose most (sampled from the county's top-decile
+   week-over-week rises), the rest on random weeks. Every synthetic
+   article-week has the same count and concern (the real corpus medians), so
+   only the timing is informative. Power = share of repeats where rung 12
+   beats 11 with Wilcoxon p < ``ALPHA``. If even precision 1 at scale 1 is
+   rarely detected, the real-news test was underpowered and its null (or
+   its p = 0.036) says little either way; precision 0 is a built-in
+   placebo and should show power near ``ALPHA``.
 """
 
 from __future__ import annotations
@@ -143,14 +156,27 @@ def shuffle_news(table: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
                                                         how="left")[table.columns]
 
 
-def news_gain(table: pd.DataFrame, refitter, settle_weeks: int) -> tuple[float, int]:
-    """MAE(rung 11) - MAE(rung 12) on settled official county-weeks, and n."""
+def news_comparison(table: pd.DataFrame, refitter, settle_weeks: int) -> dict:
+    """Rung 12 vs 11 on settled official county-weeks.
+
+    ``gain_mae`` = MAE(11) - MAE(12) (positive: news helps), plus the paired
+    Wilcoxon test of rung 12's absolute errors against rung 11's.
+    """
     rungs = [r for r in nowcast.LADDER if r.name in PLACEBO_RUNGS]
     preds = nowcast.rolling_origin(table, rungs=rungs, refitter=refitter)
     scored = evaluate.dedupe_series(nowcast.scoreable(preds, settle_weeks))
-    mae = scored.assign(err=(scored["pred"] - scored["ed_resp_final"]).abs()
-                        ).groupby("rung")["err"].mean()
-    return float(mae[PLACEBO_RUNGS[0]] - mae[PLACEBO_RUNGS[1]]), int(len(scored) // 2)
+    err = scored.assign(err=(scored["pred"] - scored["ed_resp_final"]).abs()).pivot_table(
+        index=["fips", "as_of"], columns="rung", values="err")
+    base, news = err[PLACEBO_RUNGS[0]], err[PLACEBO_RUNGS[1]]
+    test = evaluate.wilcoxon_paired(news, base)
+    return {"gain_mae": float(base.mean() - news.mean()), "n": int(len(err)),
+            "median_diff": test["median_diff"], "pvalue": test["pvalue"]}
+
+
+def news_gain(table: pd.DataFrame, refitter, settle_weeks: int) -> tuple[float, int]:
+    """MAE(rung 11) - MAE(rung 12) on settled official county-weeks, and n."""
+    result = news_comparison(table, refitter, settle_weeks)
+    return result["gain_mae"], result["n"]
 
 
 def placebo_news(table: pd.DataFrame, history: pd.DataFrame, k: int, seed: int = 0,
@@ -173,6 +199,84 @@ def placebo_pvalue(runs: pd.DataFrame) -> float:
     return float((1 + (fake >= real).sum()) / (len(fake) + 1))
 
 
+# -- 5. synthetic news (injection-recovery) ---------------------------------------
+
+RISE_QUANTILE = 0.9      # "peak weeks" = a county's top decile of week-over-week rises
+
+
+def _weekly(table: pd.DataFrame) -> pd.DataFrame:
+    cols = ["fips", "week_end", "ed_resp_final", *[c for c in NEWS_COLUMNS if c in table]]
+    return table.drop_duplicates(["fips", "week_end"])[cols].sort_values(["fips", "week_end"])
+
+
+def inject_news(table: pd.DataFrame, precision: float, rng: np.random.Generator,
+                scale: float = 1.0, news_n: float | None = None,
+                concern: float | None = None) -> pd.DataFrame:
+    """Replace the news columns with synthetic news of known informativeness.
+
+    Per county: ``k = round(scale x real article-weeks)`` (at least 1);
+    ``round(precision x k)`` of them go to weeks sampled from the county's
+    top-``RISE_QUANTILE`` week-over-week log rises in the final ED share
+    (topped up with the next-largest rises if the decile is too small), the
+    rest to random other weeks. All get the same ``news_n`` and ``concern``
+    (default: the real corpus medians); every other week has no news, as in
+    the real table. The answer key is read only to *place* the synthetic
+    signal: this tests the pipeline, never feeds a reported model.
+    """
+    weekly = _weekly(table)
+    real = weekly[weekly["news_n"].fillna(0) > 0] if "news_n" in weekly else weekly.iloc[:0]
+    news_n = float(real["news_n"].median()) if news_n is None and len(real) else (news_n or 1.0)
+    concern = (float(real["news_concern"].median()) if concern is None and len(real)
+               else (concern or 2.0))
+    parts = []
+    for fips, part in weekly.groupby("fips"):
+        part = part.reset_index(drop=True)
+        k = max(1, int(round(scale * (real["fips"] == fips).sum())))
+        k = min(k, len(part))
+        rise = np.log(part["ed_resp_final"].where(part["ed_resp_final"] > 0)).diff()
+        ranked = rise.dropna().sort_values(ascending=False).index.to_numpy()
+        n_hit = min(int(round(precision * k)), len(ranked))
+        pool = ranked[:max(n_hit, int(np.ceil((1 - RISE_QUANTILE) * len(ranked))))]
+        hits = rng.choice(pool, n_hit, replace=False) if n_hit else np.array([], int)
+        rest = np.setdiff1d(part.index.to_numpy(), hits)
+        other = rng.choice(rest, min(k - n_hit, len(rest)), replace=False)
+        chosen = np.concatenate([hits, other]).astype(int)
+        out = part[["fips", "week_end"]].assign(news_n=np.nan, news_concern=np.nan)
+        out.loc[chosen, "news_n"], out.loc[chosen, "news_concern"] = news_n, concern
+        parts.append(out)
+    fake = pd.concat(parts, ignore_index=True)
+    base = table.drop(columns=[c for c in NEWS_COLUMNS if c in table])
+    columns = list(table.columns) + [c for c in NEWS_COLUMNS if c not in table]
+    return base.merge(fake, on=["fips", "week_end"], how="left")[columns]
+
+
+def inject_recovery(table: pd.DataFrame, history: pd.DataFrame, precisions=(0.0, 0.5, 1.0),
+                    scales=(1.0,), reps: int = 5, seed: int = 0,
+                    settle_weeks: int = nowcast.SETTLE_WEEKS, refitter=None) -> pd.DataFrame:
+    """One row per (scale, precision, repeat): gain, n, Wilcoxon p."""
+    cache, rng = refitter or OriginCache(history), np.random.default_rng(seed)
+    rows = []
+    for scale in scales:
+        for precision in precisions:
+            for rep in range(reps):
+                frame = inject_news(table, precision, rng, scale)
+                result = news_comparison(frame, cache, settle_weeks)
+                rows.append({"scale": scale, "precision": precision, "rep": rep, **result})
+                log.info("inject scale %g precision %g rep %d: gain %.4f p %.3g",
+                         scale, precision, rep, result["gain_mae"], result["pvalue"])
+    return pd.DataFrame(rows)
+
+
+def inject_power(runs: pd.DataFrame) -> pd.DataFrame:
+    """Per (scale, precision): mean/median gain and power at ``ALPHA``."""
+    hit = (runs["pvalue"] < ALPHA) & (runs["gain_mae"] > 0)
+    return (runs.assign(detected=hit)
+            .groupby(["scale", "precision"], as_index=False)
+            .agg(reps=("rep", "size"), gain_mean=("gain_mae", "mean"),
+                 gain_median=("gain_mae", "median"), p_median=("pvalue", "median"),
+                 power=("detected", "mean"), n=("n", "max")))
+
+
 # -- report -----------------------------------------------------------------------
 
 def _md(frame: pd.DataFrame) -> str:
@@ -185,7 +289,7 @@ def _md(frame: pd.DataFrame) -> str:
     return "\n".join(lines) + "\n\n"
 
 
-def report(issues, tests, small, placebo) -> str:
+def report(issues, tests, small, placebo, injected=None) -> str:
     errors = issues[issues["severity"] == "error"]
     missing = (issues[issues["problem"] == "missing"]
                .groupby(["source", "rung"], as_index=False).size()
@@ -211,18 +315,34 @@ def report(issues, tests, small, placebo) -> str:
         out.append(f"MAE gain of rung 12 over 11 with real news: **{real:.4f}**; with "
                    f"shuffled news: median {fake.median():.4f}, max {fake.max():.4f} "
                    f"over {len(fake)} shuffles. Placebo p = **{placebo_pvalue(placebo):.3f}**.\n")
+    out.append("\n## 5. Synthetic-news recovery (power)\n\n")
+    if injected is None:
+        out.append("_not run; use `--inject`_\n")
+    else:
+        out.append("Real news replaced by synthetic article-weeks; `precision` = share placed "
+                   "on top-decile ED rises, `scale` = article-weeks relative to the real "
+                   f"corpus. Power = share of repeats with rung 12 better than 11 at "
+                   f"p < {ALPHA}. Precision 0 is a placebo (expect power near {ALPHA}).\n\n")
+        out.append(_md(inject_power(injected)))
     return "".join(out)
 
 
-def main() -> int:
+def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Validate the nowcast results.")
     parser.add_argument("--results", default=str(nowcast.RESULTS))
     parser.add_argument("--table", default=str(TABLE_PATH))
     parser.add_argument("--history", default=str(hist_mod.DEFAULT_CSV))
     parser.add_argument("--placebo", type=int, default=0, metavar="K",
                         help="shuffled-news runs (0 = skip; 19 for p >= 0.05 resolution)")
+    parser.add_argument("--inject", action="store_true",
+                        help="synthetic-news injection-recovery test (power of rung 12 vs 11)")
+    parser.add_argument("--inject-precision", default="0,0.5,1",
+                        help="comma list: share of synthetic article-weeks on peak rises")
+    parser.add_argument("--inject-scale", default="1",
+                        help="comma list: article-weeks as a multiple of the real corpus")
+    parser.add_argument("--inject-reps", type=int, default=5)
     parser.add_argument("--seed", type=int, default=0)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     res = Path(args.results)
 
@@ -249,10 +369,10 @@ def main() -> int:
     tests = pd.concat(tests, ignore_index=True)
     small = pd.concat(small, ignore_index=True)
 
-    placebo = None
-    if args.placebo:
+    placebo = injected = None
+    if args.placebo or args.inject:
         if not Path(args.history).exists():
-            log.error("placebo needs the CDC history CSV at %s", args.history)
+            log.error("placebo/inject need the CDC history CSV at %s", args.history)
             return 2
         table = pd.read_parquet(args.table)
         if not set(NEWS_COLUMNS) <= set(table.columns):
@@ -260,12 +380,20 @@ def main() -> int:
                       args.table)
             return 2
         history = hist_mod.examples(hist_mod.load(args.history))
-        placebo = placebo_news(table, history, args.placebo, args.seed)
-        placebo.to_csv(res / "placebo_news.csv", index=False)
+        cache = OriginCache(history)
+        if args.placebo:
+            placebo = placebo_news(table, history, args.placebo, args.seed)
+            placebo.to_csv(res / "placebo_news.csv", index=False)
+        if args.inject:
+            floats = lambda text: tuple(float(v) for v in text.split(","))
+            injected = inject_recovery(table, history, floats(args.inject_precision),
+                                       floats(args.inject_scale), args.inject_reps,
+                                       args.seed, refitter=cache)
+            injected.to_csv(res / "inject_news.csv", index=False)
 
     issues.to_csv(res / "validation_issues.csv", index=False)
     tests.to_csv(res / "validation_tests.csv", index=False)
-    text = report(issues, tests, small, placebo)
+    text = report(issues, tests, small, placebo, injected)
     (res / "validation_report.md").write_text(text)
     print(text)
     print(f"wrote {res}/validation_report.md")
