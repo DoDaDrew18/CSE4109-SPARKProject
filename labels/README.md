@@ -28,3 +28,32 @@ hand-found candidates) and then updated in place by `python -m src.news.fetch`.
 
 Fetch outcomes per attempt (HTTP status, robots result, page date vs. GDELT
 seendate gap) live in `raw/news/articles.parquet`.
+
+## assignments.csv: the hand-labeling order
+
+One row per article worth labeling (`fetched_ok` and not a `dup_of` copy):
+`article_id, position, double`. Built once by
+`python -m src.news.label_app assign` (seed 4109) and committed, so every
+labeler sees the same order.
+
+- `double = True` marks the 30 articles **both** human_a and human_b label
+  (positions 1-30). They are stratified by `stratum` and spread across metros
+  in proportion to the corpus: 14 respiratory, 8 GDELT, 4 quiet,
+  4 hard negatives; 12 from St. Louis, the metro with the hardest county call.
+- The rest are shuffled, so stopping after any number of articles still
+  leaves a fair sample (the catalog itself is sorted by metro and date).
+- Re-running `assign` only appends articles the file lacks; the double set
+  never changes. `--reshuffle` starts over (don't, once labeling has begun).
+
+## human/: hand labels, one file per labeler
+
+`human/human_a.csv`, `human/human_b.csv`, `human/adjudicated.csv`, written by
+the labeling app (`python -m src.news.label_app serve --labeler human_a`) in
+the columns of `human_template.csv` plus `labeled_at` and `seconds`. One
+file per person, so two people labeling on two laptops never touch the same
+file. Every reader (`src/news/schema.py` `load_human_labels`, the agreement
+report, the news features) takes the union of this folder and the hand-made
+`human_labels.csv`, if one exists. Workflow: `docs/LABELING_GUIDE.md`; the app
+enforces its rules on every save (complete fields, a quote found verbatim in
+the article) and never shows one labeler another's answers, the LLM's labels,
+or the `stratum` column.

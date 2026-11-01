@@ -88,6 +88,20 @@ def test_every_study_county_has_aliases_and_place_check_works():
     assert not names_county("Evanston schools report absences", "29189")
 
 
+def test_st_louis_county_does_not_vouch_for_the_city():
+    """The guide maps "St. Louis County" to 29189; the "St. Louis" inside it
+    must not also support a 29510 claim. Naming the city as well still does."""
+    county_only = "Flu cases in St. Louis County have doubled in two weeks"
+    assert names_county(county_only, "29189")
+    assert not names_county(county_only, "29510")
+    assert not names_county("Saint Louis County health officials said", "29510")
+    assert not names_county("St. Louis County and St. Louis County schools", "29510")
+    assert names_county("St. Louis County and the city of St. Louis both report flu", "29510")
+    assert names_county("St. Louis hospitals are filling up", "29510")
+    out = ground_row(llm_row(fips="29510"), ARTICLE)
+    assert out["fips"] is None and out["fips_place_ok"] is False
+
+
 def llm_row(**kw):
     base = {"article_id": "a1", "relevant": True, "fips": "29189", "illness": "flu", "concern": 2,
             "event_week": None,

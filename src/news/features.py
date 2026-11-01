@@ -69,18 +69,22 @@ def article_table(source: str = "human", labels_path=None, manifest_path=MANIFES
     LLM labels use the first run, after grounding has nulled unsupported fields.
     Publish dates come from the label file if it has them, else the manifest.
     """
-    from src.news.schema import human_consensus, load_human_labels
+    from src.news.schema import HUMAN_SOURCES, human_consensus, human_label_files, load_human_labels
 
     if source not in ("human", "llm"):
         raise ValueError(f"source must be 'human' or 'llm', not {source!r}")
-    path = Path(labels_path) if labels_path is not None else (HUMAN_LABELS if source == "human" else LLM_LABELS)
-    if not path.exists():
+    if source == "human":
+        files = human_label_files(HUMAN_SOURCES if labels_path is None else labels_path)
+    else:
+        path = Path(labels_path) if labels_path is not None else LLM_LABELS
+        files = [path] if path.exists() else []
+    if not files:
         return pd.DataFrame(columns=["article_id", "published", "relevant", "fips", "concern"])
 
     if source == "human":
-        labels = human_consensus(load_human_labels(path))
+        labels = human_consensus(load_human_labels(files))
     else:
-        labels = pd.read_parquet(path)
+        labels = pd.read_parquet(files[0])
         if "run" in labels and len(labels):
             labels = labels[labels["run"] == labels["run"].min()]
         labels = labels.drop_duplicates("article_id")

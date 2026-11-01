@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SPARK · ask the map</title>
+<style>
+  :root { --ink: #0b0b0b; --muted: #52514e; --line: #e4e3df; --bg: #f7f6f3; --blue: #2a78d6;
+          --blue-soft: #e9f1fb; --err: #b42318; }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; margin: 0; }
+  body { display: flex; flex-direction: column; background: var(--bg); color: var(--ink);
+         font: 14px/1.45 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+  header { padding: 12px 18px 10px; background: #fff; border-bottom: 1px solid var(--line); }
+  .top { display: flex; align-items: center; gap: 12px; }
+  .brand { font-weight: 700; letter-spacing: .02em; }
+  .muted { color: var(--muted); }
+  form { display: flex; gap: 8px; flex: 1; }
+  input[type=text] { flex: 1; font: inherit; font-size: 16px; padding: 9px 12px; border: 1px solid var(--line);
+                     border-radius: 8px; outline: none; }
+  input[type=text]:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-soft); }
+  button { font: inherit; cursor: pointer; border-radius: 8px; padding: 8px 16px; border: 1px solid var(--blue);
+           background: var(--blue); color: #fff; font-weight: 600; }
+  button:disabled { opacity: .55; cursor: progress; }
+  .examples { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: 12.5px; }
+  .examples .chip { cursor: pointer; border: 1px solid var(--line); background: #fff; color: var(--ink);
+                    border-radius: 999px; padding: 2px 10px; font-weight: 400; }
+  .examples .chip:hover { border-color: var(--blue); background: var(--blue-soft); }
+  .status { font-size: 12.5px; margin-left: auto; white-space: nowrap; }
+  #error { color: var(--err); margin-top: 6px; }
+  main { flex: 1; position: relative; }
+  iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--bg); }
+  #empty { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: var(--muted); }
+  #empty b { color: var(--ink); }
+  #busy { position: absolute; top: 14px; right: 18px; z-index: 5; background: var(--ink); color: #fff;
+          border-radius: 8px; padding: 6px 12px; font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="top">
+    <span class="brand">SPARK</span><span class="muted">ask the map</span>
+    <form id="ask" autocomplete="off">
+      <input type="text" id="q" maxlength="300" placeholder="e.g. Where was flu rising around St. Louis at Christmas 2025?" autofocus>
+      <button type="submit" id="go">Ask</button>
+    </form>
+    <span class="status muted" id="status">loading…</span>
+  </div>
+  <div class="examples" id="examples"><span class="muted">Try:</span></div>
+  <div id="error" hidden></div>
+</header>
+<main>
+  <div id="empty"><div><b>Ask about flu, COVID, RSV or all three, anywhere in the lower 48.</b><br>
+    Say where (a state, a study metro, a county), when (a date, a month, “the peak of 2024-25”),<br>
+    and whether you want the level or where it is rising or falling.</div></div>
+  <iframe id="map" title="map" hidden></iframe>
+  <div id="busy" hidden>Reading the question and computing the map…</div>
+</main>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+
+async function status() {
+  const s = await (await fetch("/api/status")).json();
+  const who = s.parser === "rules" ? "rule parser (no LLM running)" : s.parser;
+  $("status").textContent = `questions read by: ${who} · data ${s.first_week} to ${s.latest_week}`;
+  for (const ex of s.examples) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "chip";
+    b.textContent = ex;
+    b.onclick = () => { $("q").value = ex; ask(); };
+    $("examples").append(b);
+  }
+}
+
+async function ask() {
+  const question = $("q").value.trim();
+  if (!question) return;
+  $("go").disabled = true;
+  $("busy").hidden = false;
+  $("error").hidden = true;
+  try {
+    const r = await fetch("/api/ask", {method: "POST", headers: {"Content-Type": "application/json"},
+                                       body: JSON.stringify({question})});
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    $("map").src = "/map/" + encodeURIComponent(data.id);
+    $("map").hidden = false;
+    $("empty").hidden = true;
+    history.replaceState(null, "", "#" + encodeURIComponent(question));
+  } catch (e) {
+    $("error").textContent = "Could not answer that: " + e.message;
+    $("error").hidden = false;
+  } finally {
+    $("go").disabled = false;
+    $("busy").hidden = true;
+  }
+}
+
+$("ask").addEventListener("submit", (e) => { e.preventDefault(); ask(); });
+status().then(() => {
+  const fromHash = decodeURIComponent(location.hash.slice(1));
+  if (fromHash) { $("q").value = fromHash; ask(); }
+});
+</script>
+</body>
+</html>
