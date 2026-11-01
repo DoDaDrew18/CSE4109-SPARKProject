@@ -110,6 +110,18 @@ Read this as a lead, not a result:
 - On the 36 scored weeks that had news, the median change is about zero
   (p = 0.56); the mean gain is a few large peak-week corrections.
 - LLM labels have no human agreement yet (`python -m src.news.agreement`).
+- **The test is underpowered at this corpus size.** Replacing real news with
+  synthetic article-weeks of known timing (`python -m src.validate_results
+  --inject --inject-scale 1,3`, 5 repeats each): with as many article-weeks
+  as the real corpus, perfectly timed news (every one on a top-decile ED
+  rise) gains 0.029 MAE and is detected (p < 0.05) in 3 of 5 repeats;
+  half-right timing is never detected; random timing never is (placebo
+  check). With 3x the articles, perfect timing is detected 5 of 5 times
+  (gain 0.079). The real gain (0.040) is larger than perfect timing gives
+  at the same size, which fits "a few large peak-week corrections" better
+  than a steady signal.
+- Article text is screened for prompt-injection markers before labeling
+  (`src/news/injection.py`); none of the 224 fetched texts matches.
 
 **Ablation** (`data/results/metrics_ablation.csv`): without the season
 harmonics the gain falls to +7%, and without momentum to +14%. Dropping the
@@ -134,7 +146,7 @@ worse than season alone (p < 0.001).
 | **NOAA NCEI** + **IEM ASOS** | Daily temp, precip (NCEI); dew point, humidity (IEM); one airport per metro, no key | `src/ingest_noaa.py` | ✅ 2024-01 → today |
 | **Local news** (web search + GDELT GKG files) | 196 candidate articles, 173 with text; 82 St. Louis | `src/news/collect.py`, `src/news/fetch.py` | ✅ ready to hand-label |
 | Census county shapes + population | Map, hot spots, SaTScan inputs | `src/spatial/shapes.py` | ✅ |
-| EPA AirNow | PM2.5, ozone | – | Deferred |
+| **CAMS air quality** via Open-Meteo | PM2.5, ozone per county (modeled, not vintaged; 7-day lag); St. Louis city and County share one grid cell | `src/ingest_airquality.py` | ✅ 2024-01 → today, in `align`; no model rung yet |
 
 ## Pipeline
 
@@ -156,6 +168,7 @@ place          spatial.hotspots (Getis-Ord Gi*) · spatial.map · spatial.satsca
 python -m src.ingest_nssp                 # today's NSSP vintage, all counties
 python -m src.ingest_nwss                 # today's wastewater vintage
 python -m src.ingest_noaa                 # weather through yesterday
+python -m src.ingest_airquality           # CAMS PM2.5 / ozone through yesterday
 
 # one-time history
 python -m src.backfill_nssp               # study-county vintages since 202416 (resumable)
@@ -171,6 +184,7 @@ python -m src.news.baseline && python -m src.news.agreement   # → data/labels/
 # table, models, map
 python -m src.align && python -m src.nowcast
 python -m src.validate_results --placebo 19   # exits 1 on implausible predictions
+python -m src.validate_results --inject --inject-scale 1,3   # synthetic-news power test
 python -m src.spatial.map --week 2025-12-27 --out demo/map.html
 ```
 
