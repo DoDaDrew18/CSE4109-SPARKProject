@@ -11,7 +11,9 @@ in a finding instead of quietly using newer data.
 Workers
 -------
 ed_visits    NSSP % of ED visits (COVID, flu, RSV) as published on the date
-nowcast      the study's best model (HistGBM on national history) for this week
+nowcast      the study's best model (HistGBM on national history) for this week,
+             with a calibrated 80% range (``src.uncertainty``, conformalized quantile GBM)
+outlook      probability of a 10%+ rise from the nearest analogs in national history
 hotspots     Getis-Ord Gi* of the region against its neighbors, same vintage
 wastewater   CDC NWSS levels from honest vintages (from 2026-04-17), else a labeled proxy
 weather      Open-Meteo ERA5 temperature / dew point / humidity, 7-day availability lag
@@ -190,7 +192,59 @@ def _refitter():
     return None if rows is None else hist.Refitter(rows)
 
 
+@lru_cache(maxsize=1)
+def _prob_refitter():
+    from src.uncertainty import ProbRefitter
+    rows = _history_rows()
+    return None if rows is None else ProbRefitter(rows)
+
+
 MAX_NOWCAST_GAP_DAYS = 21     # target week vs newest published week; backtest lags were 7-14 days
+_SRC_HIST = "This study (src/history.py)"
+
+
+def _published(ctx: Context, worker: str):
+    """The area's published series for the nowcast and outlook, or a data-gap finding.
+
+    Returns ``(feats, region_feats, target, meta, gaps)``: one feature row
+    per county and one for the population-weighted area series (``last``,
+    ``y_lag2``, ``y_lag3``, ``as_of``), or ``gaps`` explaining why there is none.
+    """
+    wide, meta = nssp_vintage(ctx.region.fips, ctx.as_of)
+    wide = wide[wide["resp_pct"].notna()] if not wide.empty else wide
+    if wide.empty:
+        return None, None, None, meta, [Finding(
+            worker, f"No {worker}: no county in the area had ED data published as of {meta['issue']}.",
+            "data_gap", meta["issue"], _SRC_HIST, severity=0.2, confidence=0.9)]
+    target = week_end_of(ctx.as_of)
+    gap = (target - wide["week_end"].max()).days
+    if gap > MAX_NOWCAST_GAP_DAYS:
+        return None, None, None, meta, [Finding(
+            worker, f"No {worker}: the newest published ED week ended {wide['week_end'].max().date()}, "
+            f"{gap} days before the target week. The model learns a one-step correction for the usual "
+            "1-2 week reporting lag; projecting further would be a forecast it was never tested on.",
+            "data_gap", meta["issue"], _SRC_HIST, severity=0.2, confidence=0.9)]
+
+    def row(s: np.ndarray, fips: str) -> dict:
+        return {"fips": fips, "last": s[-1], "y_lag2": s[-2] if len(s) > 1 else np.nan,
+                "y_lag3": s[-3] if len(s) > 2 else np.nan, "as_of": ctx.as_of}
+
+    feats = pd.DataFrame([row(g.sort_values("week_end")["resp_pct"].to_numpy(float), fips)
+                          for fips, g in wide.groupby("fips")])
+    pop = counties().set_index("fips")["population"].astype(float)
+    w = wide.assign(w=wide["fips"].map(pop).fillna(1.0).clip(lower=1.0))
+    area = (w.assign(wx=w["resp_pct"] * w["w"]).groupby("week_end")[["wx", "w"]].sum()
+              .pipe(lambda t: t["wx"] / t["w"]).sort_index())
+    return feats, pd.DataFrame([row(area.to_numpy(float), "area")]), target, meta, []
+
+
+def _backtest_note() -> str:
+    from src.uncertainty import load_metrics
+    m = load_metrics()
+    if not m:
+        return ""
+    return (f" In the study's vintage backtest the 80% range held the final value in "
+            f"{m['coverage']:.0%} of {int(m['n'])} county-weeks.")
 
 
 def run_nowcast(ctx: Context) -> list[Finding]:
@@ -199,43 +253,86 @@ def run_nowcast(ctx: Context) -> list[Finding]:
     if refit is None:
         ctx.log("No CDC history CSV (raw/cdc_nssp/); the nowcast model cannot be fitted.")
         return []
-    wide, meta = nssp_vintage(ctx.region.fips, ctx.as_of)
-    if wide.empty:
-        return [Finding("nowcast", f"No nowcast: no county in the area had ED data published as of "
-                        f"{meta['issue']}.", "data_gap", meta["issue"], "This study (src/history.py)",
-                        severity=0.2, confidence=0.9)]
-    target = week_end_of(ctx.as_of)
-    gap = (target - wide["week_end"].max()).days
-    if gap > MAX_NOWCAST_GAP_DAYS:
-        return [Finding("nowcast", f"No nowcast: the newest published ED week ended {wide['week_end'].max().date()}, "
-                        f"{gap} days before the target week. The model learns a one-step correction for the usual "
-                        "1-2 week reporting lag; projecting further would be a forecast it was never tested on.",
-                        "data_gap", meta["issue"], "This study (src/history.py)", severity=0.2, confidence=0.9)]
+    feats, area, target, meta, gaps = _published(ctx, "nowcast")
+    if gaps:
+        return gaps
     ctx.log(f"Fitting gradient boosting on national history settled 8+ weeks before {ctx.as_of.date()}")
     model = refit.model(ctx.as_of)
     if model is None:
         return []
-    rows = []
-    for fips, g in wide.groupby("fips"):
-        s = g.sort_values("week_end")["resp_pct"].to_numpy(float)
-        rows.append({"fips": fips, "last": s[-1], "y_lag2": s[-2] if len(s) > 1 else np.nan,
-                     "y_lag3": s[-3] if len(s) > 2 else np.nan, "as_of": ctx.as_of})
-    feats = pd.DataFrame(rows)
     feats["pred"] = hist.predict(model, feats)
-    ctx.emit_layer({"kind": "nowcast", "week_end": target.date().isoformat(),
-                    "values": {f: round(float(v), 2) for f, v in zip(feats["fips"], feats["pred"])}})
     last_w, pred_w = _weighted(feats, "last", ctx.region), _weighted(feats, "pred", ctx.region)
     change = (pred_w / last_w - 1) * 100 if last_w > 0 else float("nan")
+
+    ctx.log("Fitting calibrated 10th/90th-percentile models (conformalized quantile regression)")
+    prob = _prob_refitter().model(ctx.as_of)
+    layer = {"kind": "nowcast", "week_end": target.date().isoformat(),
+             "values": {f: round(float(v), 2) for f, v in zip(feats["fips"], feats["pred"])}}
+    data = {"target_week": target.date().isoformat(), "pred": round(pred_w, 3), "last": round(last_w, 3),
+            "per_county": {f: round(float(p), 3) for f, p in zip(feats["fips"], feats["pred"])}}
+    span = ""
+    if prob is not None:
+        lo, hi = prob.range(feats)
+        layer["lo"] = {f: round(float(v), 2) for f, v in zip(feats["fips"], lo)}
+        layer["hi"] = {f: round(float(v), 2) for f, v in zip(feats["fips"], hi)}
+        a_lo, a_hi = (float(v[0]) for v in prob.range(area))
+        a_lo, a_hi = min(a_lo, pred_w), max(a_hi, pred_w)
+        data.update(range_80=[round(a_lo, 3), round(a_hi, 3)], range_calibrated_on=f"{prob.n_cal} HSA-weeks "
+                    f"from {prob.cal_from.date()}")
+        span = f" (80% range {_pct(a_lo)}-{_pct(a_hi)})"
+    ctx.emit_layer(layer)
     return [Finding(
         "nowcast",
-        f"Nowcast for the week ending {target.date()}: {_pct(pred_w)} respiratory ED share for the region "
+        f"Nowcast for the week ending {target.date()}: {_pct(pred_w)}{span} respiratory ED share for the region "
         f"({change:+.0f}% vs the newest published {_pct(last_w)}). In the study's backtest this model beat "
-        f"carrying the last value forward by 19% (MAE), but it lags sharp peak onsets.",
+        f"carrying the last value forward by 19% (MAE) on four metros, but it lags sharp peak onsets."
+        + (_backtest_note() if span else ""),
         "nowcast", ctx.as_of.date().isoformat(), "This study: HistGBM on CDC rdmq-nq56 history (src/history.py)",
         severity=round(min(0.95, 0.15 + pred_w / 15 + max(0.0, change) / 150), 2), confidence=0.6,
-        fips=feats["fips"].tolist(),
-        data={"target_week": target.date().isoformat(), "pred": round(pred_w, 3), "last": round(last_w, 3),
-              "per_county": {f: round(float(p), 3) for f, p in zip(feats["fips"], feats["pred"])}})]
+        fips=feats["fips"].tolist(), data=data)]
+
+
+def _hsa_label(fips_list: list[str]) -> str:
+    c = counties().set_index("fips")
+    known = [f for f in fips_list if f in c.index]
+    if not known:
+        return "an unnamed HSA"
+    top = c.loc[known].sort_values("population", ascending=False).iloc[0]
+    more = len(known) - 1
+    return f"{top['name']}, {top['state']}" + (f" (+{more} count{'y' if more == 1 else 'ies'})" if more else "")
+
+
+def run_outlook(ctx: Context) -> list[Finding]:
+    from src.uncertainty import RISE, load_metrics
+    if _prob_refitter() is None:
+        ctx.log("No CDC history CSV (raw/cdc_nssp/); the outlook cannot be fitted.")
+        return []
+    feats, area, target, meta, gaps = _published(ctx, "outlook")
+    if gaps:
+        return gaps
+    ctx.log(f"Searching national history (675 HSAs, settled 8+ weeks before {ctx.as_of.date()}) for analogs")
+    prob = _prob_refitter().model(ctx.as_of)
+    if prob is None:
+        return []
+    o = prob.outlook(area)[0]
+    near = "; ".join(f"{_hsa_label(e['fips_list'])}, week ending {e['week_end']} ({e['change']:+.0%})"
+                     for e in o.examples)
+    m = load_metrics()
+    track = (f" Backtest: these probabilities beat the base rate (Brier skill {m['brier_skill']:+.0%}, "
+             f"AUC {m['auc_rise']:.2f}, {int(m['n'])} county-weeks)." if m else "")
+    rise_pct = round((np.exp(RISE) - 1) * 100)
+    claim = (f"Outlook from {o.n} analogs: in the most similar past situations across US Health Service Areas "
+             f"(same level, momentum and time of year), ED share rose {rise_pct}%+ the following week "
+             f"{o.p_rise:.0%} of the time and fell {rise_pct}%+ {o.p_fall:.0%} of the time (median change "
+             f"{o.median_change:+.0%}; base rate of a rise in that history {prob.base_rise:.0%}). "
+             f"Closest: {near}." + track)
+    return [Finding(
+        "outlook", claim, "outlook", ctx.as_of.date().isoformat(),
+        "This study: analog ensemble (k-nearest neighbors) on CDC rdmq-nq56 history (src/uncertainty.py)",
+        severity=round(min(0.95, 0.1 + 0.8 * o.p_rise), 2), confidence=0.6, fips=feats["fips"].tolist(),
+        data={"p_rise": round(o.p_rise, 3), "p_fall": round(o.p_fall, 3),
+              "median_change": round(o.median_change, 3), "base_rise": round(prob.base_rise, 3),
+              "target_week": target.date().isoformat(), "analogs": o.examples})]
 
 
 # ── Hot spots ────────────────────────────────────────────────────────────────
@@ -480,6 +577,9 @@ WORKERS: dict[str, Worker] = {w.id: w for w in (
     Worker("nowcast", "Nowcaster", "The study's best model: estimates this week's respiratory ED share from the "
            "published series and national history (fills the 1-2 week reporting lag).", run_nowcast,
            ("CDC NSSP", "CDC rdmq-nq56")),
+    Worker("outlook", "Outlook", "Probability that the area's ED share is rising (up 10%+) this week, from the "
+           "most similar past situations in national history, naming the closest matches. Use for 'is it "
+           "rising / getting worse / will it peak' questions.", run_outlook, ("CDC NSSP", "CDC rdmq-nq56")),
     Worker("hotspots", "Cluster Scan", "Getis-Ord Gi* test of whether the area is a significant hot or cold "
            "spot relative to surrounding counties.", run_hotspots, ("CDC NSSP",)),
     Worker("wastewater", "Sewer Sentinel", "CDC wastewater viral activity (COVID, flu A, RSV) for sewersheds in "

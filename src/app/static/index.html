@@ -43,6 +43,25 @@ button:disabled { opacity: .5; cursor: default; }
 .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--line); }
 .dot.running { background: var(--warn); animation: pulse 1s infinite; } .dot.done { background: var(--ok); } .dot.error { background: var(--bad); }
 @keyframes pulse { 50% { opacity: .35; } }
+/* survey scan while Ask runs: beam + grid live in the county SVG (clipped to the outlines) */
+path.scanning { stroke: var(--scan, #5eead4); stroke-width: 2px; stroke-dasharray: 7 5; animation: ants .8s linear infinite; }
+@keyframes ants { to { stroke-dashoffset: -24; } }
+.scanhud { position: absolute; z-index: 600; left: 56px; top: 12px; min-width: 250px; max-width: 360px; padding: 8px 12px 9px;
+  border-radius: 10px; background: rgba(8, 18, 28, .8); color: #e6fbff; border: 1px solid rgba(94, 234, 212, .45);
+  box-shadow: 0 6px 24px rgba(0,0,0,.28); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  font-size: 12.5px; transition: opacity .5s; pointer-events: none; }
+.scanhud.fade { opacity: 0; }
+.scanhud .row { display: flex; align-items: center; gap: 8px; }
+.scanhud .tag { font: 600 10.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; color: #5eead4; }
+.scanhud .count { margin-left: auto; font: 11.5px ui-monospace, SFMono-Regular, Menlo, monospace; color: #9fe9dc; }
+.scanhud .ping { width: 8px; height: 8px; border-radius: 50%; background: #5eead4; box-shadow: 0 0 0 0 rgba(94,234,212,.7); animation: ping 1.4s infinite; flex: none; }
+@keyframes ping { 70% { box-shadow: 0 0 0 9px rgba(94,234,212,0); } 100% { box-shadow: 0 0 0 0 rgba(94,234,212,0); } }
+.scanhud .what { margin-top: 3px; color: #cdeff0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.scanhud .bar { position: relative; height: 3px; margin-top: 7px; border-radius: 2px; background: rgba(94,234,212,.18); overflow: hidden; }
+.scanhud .bar i { position: absolute; inset: 0 auto 0 0; width: 0; background: #5eead4; box-shadow: 0 0 8px #5eead4; transition: width .35s; }
+.scanhud.writing .bar i { width: 30% !important; animation: slide 1.1s ease-in-out infinite alternate; }
+@keyframes slide { from { left: 0; } to { left: 70%; } }
+@media (prefers-reduced-motion: reduce) { path.scanning, .scanhud .ping, .scanhud.writing .bar i { animation: none; } }
 .agent .meta { color: var(--muted); font-size: 12px; }
 .log { font-size: 11.5px; color: var(--muted); margin: 0 0 4px 18px; }
 #answer { white-space: pre-wrap; }
@@ -67,6 +86,13 @@ button:disabled { opacity: .5; cursor: default; }
 .layers button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .hint { position: absolute; z-index: 500; left: 56px; top: 12px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: 12.5px; box-shadow: 0 2px 8px rgba(0,0,0,.12); }
 .leaflet-container { background: var(--bg); }
+.search { position: relative; margin-bottom: 8px; }
+.search input { width: 100%; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.results { position: absolute; z-index: 1000; left: 0; right: 0; top: calc(100% + 4px); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 22px rgba(0,0,0,.14); overflow: hidden; }
+.results button { display: block; width: 100%; text-align: left; border: 0; border-radius: 0; background: transparent; padding: 8px 10px; }
+.results button:hover, .results button.sel { background: var(--chip); }
+.results .kind { float: right; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; margin-left: 8px; }
+.results .detail { display: block; color: var(--muted); font-size: 11.5px; }
 @media (max-width: 820px) {
   .app { grid-template-columns: 1fr; grid-template-rows: 48vh auto; height: auto; }
   aside { border-left: 0; border-top: 1px solid var(--line); }
@@ -78,7 +104,12 @@ button:disabled { opacity: .5; cursor: default; }
 <div class="app">
   <div style="position:relative">
     <div id="map"></div>
-    <div class="hint" id="hint">Draw a box or polygon (tools at left), or pick a metro →</div>
+    <div class="scanhud" id="scanHud" hidden>
+      <div class="row"><span class="ping"></span><span class="tag" id="scanTag">SURVEYING</span><span class="count" id="scanCount"></span></div>
+      <div class="what" id="scanWhat"></div>
+      <div class="bar"><i id="scanBar"></i></div>
+    </div>
+    <div class="hint" id="hint">Search a place, draw a box or polygon (tools at left), or pick a metro →</div>
   </div>
   <aside>
     <div>
@@ -88,6 +119,10 @@ button:disabled { opacity: .5; cursor: default; }
 
     <div>
       <h2>Area</h2>
+      <div class="search">
+        <input id="place" type="search" placeholder="Search a place: city, county or ZIP" autocomplete="off" spellcheck="false">
+        <div class="results" id="placeResults" hidden></div>
+      </div>
       <div class="chips" id="metros"></div>
       <div class="card" id="area" style="margin-top:8px"><span class="note">No area selected.</span></div>
     </div>
@@ -97,6 +132,7 @@ button:disabled { opacity: .5; cursor: default; }
       <div class="row">
         <input type="date" id="asof">
         <button class="chip" data-date="2025-02-01">Feb 2025 flu peak</button>
+        <button class="chip" data-date="2025-12-27">Dec 2025 surge</button>
         <button class="chip" data-date="2026-01-10">Jan 2026</button>
         <button class="chip" data-date="today">Today</button>
       </div>
@@ -125,7 +161,8 @@ button:disabled { opacity: .5; cursor: default; }
       <div class="card" id="findings"></div>
     </div>
 
-    <p class="note">CSE 4109 SPARK project · data: CDC NSSP (Delphi), CDC NWSS, Open-Meteo, study news corpus, GDELT.
+    <p class="note">CSE 4109 SPARK project · data: CDC NSSP (Delphi), CDC NWSS, Open-Meteo, study news corpus, GDELT;
+      maps: Esri; place search: Census Gazetteer.
       Retrospective research tool, not medical advice.</p>
   </aside>
 </div>
@@ -152,10 +189,31 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":
 let geometry = null, outlines = null, layers = {}, findings = {}, workerNames = {}, activeLayer = "ed", busy = false;
 
 // ── map ──
-const map = L.map("map", { zoomControl: true }).setView([38.6, -90.2], 8);
-L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
-  attribution: '&copy; OpenStreetMap &copy; CARTO', subdomains: "abcd", maxZoom: 18,
-}).addTo(map);
+const map = L.map("map", { zoomControl: true, zoomSnap: 0.25 });
+map.fitBounds([[24.5, -124.8], [49.4, -66.9]]);              // the lower 48
+// Esri basemaps: no API key needed (CARTO's free basemap now returns "API KEY REQUIRED" tiles).
+const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/";
+const ESRI_ATTR = "Tiles &copy; Esri &mdash; Esri, Maxar, Earthstar Geographics, HERE, Garmin, &copy; OpenStreetMap contributors";
+map.createPane("labels");                                   // place names above the county colors
+map.getPane("labels").style.zIndex = 450;
+map.getPane("labels").style.pointerEvents = "none";
+const tiles = (path, opts = {}) => L.tileLayer(ESRI + path + "/MapServer/tile/{z}/{y}/{x}", { maxZoom: 18, ...opts });
+const BASE = {
+  "Satellite": L.layerGroup([tiles("World_Imagery", { attribution: ESRI_ATTR }),
+                             tiles("Reference/World_Boundaries_and_Places", { pane: "labels" })]),
+  "Light gray": L.layerGroup([tiles("Canvas/World_Light_Gray_Base", { attribution: ESRI_ATTR, maxZoom: 16 }),
+                              tiles("Canvas/World_Light_Gray_Reference", { pane: "labels", maxZoom: 16 })]),
+  "Streets": tiles("World_Street_Map", { attribution: ESRI_ATTR }),
+};
+BASE["Satellite"].addTo(map);
+L.control.layers(BASE, null, { position: "topright", collapsed: false }).addTo(map);
+const onSatellite = () => map.hasLayer(BASE["Satellite"]);
+function setBase(name) {
+  Object.entries(BASE).forEach(([n, l]) => { if (n !== name && map.hasLayer(l)) map.removeLayer(l); });
+  if (!map.hasLayer(BASE[name])) BASE[name].addTo(map);
+  countyLayer.setStyle(countyStyle);
+}
+map.on("baselayerchange", () => { scan.autoGray = false; countyLayer.setStyle(countyStyle); });
 const drawn = new L.FeatureGroup().addTo(map);
 const countyLayer = L.geoJSON(null, { style: countyStyle, onEachFeature: (f, l) => l.bindTooltip(() => tooltip(f)) }).addTo(map);
 map.addControl(new L.Control.Draw({
@@ -180,7 +238,8 @@ function scaleFor(values) {
 }
 function countyStyle(f) {
   const fips = f.properties.fips, L_ = layers[activeLayer];
-  const base = { color: "#5f6b7a", weight: 0.8, fillOpacity: 0.08, fillColor: "#9ec5f4" };
+  const base = onSatellite() ? { color: "#ffffff", weight: 1.2, fillOpacity: 0.18, fillColor: "#9ec5f4" }
+                             : { color: "#5f6b7a", weight: 0.8, fillOpacity: 0.08, fillColor: "#9ec5f4" };
   const hot = layers.hotspots?.classes?.[fips] || "";
   if (L_ && L_.values && L_.values[fips] != null) Object.assign(base, { fillColor: L_.scale.color(L_.values[fips]), fillOpacity: 0.72 });
   if (L_ && L_.values && L_.values[fips] == null) Object.assign(base, { fillColor: "#bbb", fillOpacity: 0.25, dashArray: "3 3" });
@@ -191,7 +250,8 @@ function countyStyle(f) {
 function tooltip(f) {
   const p = f.properties, rows = [`<b>${esc(p.name)}, ${esc(p.state)}</b>`, `pop ${Number(p.population || 0).toLocaleString()}`];
   if (layers.ed) rows.push(`ED resp. share: ${layers.ed.values[p.fips] != null ? layers.ed.values[p.fips].toFixed(2) + "%" : "no data published"}`);
-  if (layers.nowcast?.values[p.fips] != null) rows.push(`Nowcast: ${layers.nowcast.values[p.fips].toFixed(2)}%`);
+  if (layers.nowcast?.values[p.fips] != null) { const N = layers.nowcast, lo = N.lo?.[p.fips], hi = N.hi?.[p.fips];
+    rows.push(`Nowcast: ${N.values[p.fips].toFixed(2)}%` + (lo != null && hi != null ? ` (80% range ${lo.toFixed(2)}–${hi.toFixed(2)}%)` : "")); }
   if (layers.hotspots?.classes?.[p.fips]) rows.push(`Gi*: ${esc(layers.hotspots.classes[p.fips])}`);
   return rows.join("<br>");
 }
@@ -222,6 +282,7 @@ async function setGeometry(g) {
 }
 function showRegion(region, geo) {
   outlines = geo; countyLayer.clearLayers(); countyLayer.addData(geo);
+  if (scan.on) scanAttach();
   const extra = region.fips.length > 1 ? ` · ${region.fips.length} counties` : "";
   $("area").innerHTML = `<b>${esc(region.label)}</b><div class="note">${region.states.join(", ")}${extra} · population ${region.population.toLocaleString()}</div>`;
 }
@@ -230,6 +291,142 @@ Object.entries(METROS).forEach(([name, b]) => {
   btn.onclick = () => { const rect = L.rectangle(b, { color: "#256abf", weight: 2, fillOpacity: 0.04 }); drawn.clearLayers(); drawn.addLayer(rect); map.fitBounds(b, { padding: [40, 40] }); setGeometry(rect.toGeoJSON().geometry); };
   $("metros").appendChild(btn);
 });
+// ── survey scan: a beam sweeps the selected counties while the agents work ──
+// Drawn inside Leaflet's SVG renderer and clipped to the county paths, so it follows
+// the real outlines and stays put through pans and zooms.
+const SVGNS = "http://www.w3.org/2000/svg", SWEEP_MS = 2200, MIN_SCAN_MS = 2 * SWEEP_MS;
+const REDUCED = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+const scan = { on: false, beaming: false, raf: 0, t0: 0, g: null, defs: null, box: null, total: 0, done: new Set(), autoGray: false, timer: 0 };
+function svgEl(tag, attrs, parent) {
+  const el = document.createElementNS(SVGNS, tag);
+  Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
+  return parent ? parent.appendChild(el) : el;
+}
+function scanDetach() {
+  scan.g?.remove(); scan.defs?.remove(); scan.g = scan.defs = scan.box = null;
+  countyLayer.eachLayer((l) => l._path?.classList.remove("scanning"));
+}
+function scanAttach() {
+  scanDetach();
+  const ls = countyLayer.getLayers().filter((l) => l._path);
+  if (!scan.beaming || !ls.length) return;
+  const svg = ls[0]._renderer._container, root = ls[0]._renderer._rootGroup;
+  const color = onSatellite() ? "#5eead4" : "#1f8fb8";
+  $("map").style.setProperty("--scan", color);
+  scan.defs = svgEl("defs", {}); svg.insertBefore(scan.defs, svg.firstChild);
+  const clip = svgEl("clipPath", { id: "scanClip" }, scan.defs);
+  ls.forEach((l, i) => { l._path.id = `scan-cty-${i}`; svgEl("use", { href: `#scan-cty-${i}` }, clip); l._path.classList.add("scanning"); });
+  const grad = svgEl("linearGradient", { id: "scanGrad", x1: 0, y1: 0, x2: 0, y2: 1 }, scan.defs);
+  [[0, 0], [0.7, 0.16], [0.94, 0.42], [1, 0.9]].forEach(([o, a]) => svgEl("stop", { offset: o, "stop-color": color, "stop-opacity": a }, grad));
+  const pat = svgEl("pattern", { id: "scanGrid", width: 24, height: 24, patternUnits: "userSpaceOnUse" }, scan.defs);
+  svgEl("path", { d: "M24 0H0V24", fill: "none", stroke: color, "stroke-opacity": 0.4, "stroke-width": 1 }, pat);
+  scan.g = svgEl("g", { "clip-path": "url(#scanClip)", "pointer-events": "none" }, root);
+  scan.grid = svgEl("rect", { fill: "url(#scanGrid)" }, scan.g);
+  scan.beam = svgEl("rect", { fill: "url(#scanGrad)" }, scan.g);
+  scan.edge = svgEl("rect", { fill: color, height: 2.5 }, scan.g);
+  scanLayout();
+}
+function scanLayout() {                                  // county bounds in the SVG's layer-pixel space
+  if (!scan.g) return;
+  const b = countyLayer.getBounds(), p0 = map.latLngToLayerPoint(b.getNorthWest()), p1 = map.latLngToLayerPoint(b.getSouthEast());
+  scan.box = { x: p0.x, y: p0.y, w: p1.x - p0.x, h: p1.y - p0.y };
+  const band = Math.max(36, scan.box.h * 0.32);
+  [["grid", { x: p0.x, y: p0.y, width: scan.box.w, height: scan.box.h }],
+   ["beam", { x: p0.x, width: scan.box.w, height: band }], ["edge", { x: p0.x, width: scan.box.w }]]
+    .forEach(([k, a]) => Object.entries(a).forEach(([n, v]) => scan[k].setAttribute(n, v)));
+  scan.band = band; scanFrame(performance.now(), true);
+}
+function scanFrame(t, once) {
+  if (scan.box) {
+    const f = REDUCED ? 0.5 : ((t - scan.t0) % SWEEP_MS) / SWEEP_MS, e = 0.5 - 0.5 * Math.cos(Math.PI * f);
+    const y = scan.box.y - scan.band + e * (scan.box.h + scan.band);
+    scan.beam.setAttribute("y", y); scan.edge.setAttribute("y", y + scan.band - 2.5);
+  }
+  if (!once && scan.beaming && !REDUCED) scan.raf = requestAnimationFrame(scanFrame);
+}
+map.on("zoomend viewreset", scanLayout);
+function hud(tag, what, count, frac) {
+  const h = $("scanHud"); h.hidden = false; h.classList.remove("fade");
+  if (tag != null) $("scanTag").textContent = tag;
+  if (what != null) $("scanWhat").textContent = what;
+  if (count != null) $("scanCount").textContent = count;
+  if (frac != null) $("scanBar").style.width = `${Math.round(frac * 100)}%`;
+}
+function scanStart(label) {
+  clearTimeout(scan.timer); cancelAnimationFrame(scan.raf);
+  Object.assign(scan, { on: true, beaming: true, t0: performance.now(), total: 0, done: new Set(), autoGray: onSatellite() });
+  $("scanHud").classList.remove("writing");
+  hud("SURVEYING", label, "planning…", 0.04);
+  $("hint").hidden = true;
+  scanAttach(); scanFrame(performance.now());
+}
+function scanPlan(n) { scan.total = n; hud(null, null, `0/${n} agents`, 0.08); }
+function scanAgentDone(id) {
+  scan.done.add(id);
+  const n = scan.done.size, total = Math.max(scan.total, n);
+  hud(null, null, `${n}/${total} agents`, 0.08 + 0.92 * n / total);
+  if (scan.total && n >= scan.total) {                   // every agent reported: finish the sweep, then reveal
+    const left = Math.max(0, MIN_SCAN_MS - (performance.now() - scan.t0));
+    clearTimeout(scan.timer); scan.timer = setTimeout(scanReveal, left);
+  }
+}
+function scanReveal() {
+  if (!scan.beaming) return;
+  scan.beaming = false; cancelAnimationFrame(scan.raf); scanDetach();
+  if (scan.autoGray && onSatellite()) setBase("Light gray");   // data colors read best on gray; switch back any time
+  if (!scan.on) return;
+  const model = ($("llm").textContent.split("·").pop() || "").trim() || "the model";
+  hud("WRITING", `Answer from ${model}, citing the findings`, `${scan.done.size}/${scan.total} agents`, null);
+  $("scanHud").classList.add("writing");
+}
+function scanWriting() { if (scan.on && !scan.beaming) $("scanHud").classList.add("writing"); }
+function scanEnd() {
+  clearTimeout(scan.timer);
+  if (scan.beaming) scanReveal();
+  scan.on = false;
+  $("scanHud").classList.remove("writing"); hud("DONE", null, scan.total ? `${scan.done.size}/${scan.total} agents` : "", 1);
+  $("scanHud").classList.add("fade");
+  scan.timer = setTimeout(() => { $("scanHud").hidden = true; }, 900);
+}
+
+// ── place search: counties, cities and ZIPs from local Census files (GET /api/places) ──
+let placeTimer = null, placeSeq = 0, places = [], placeSel = -1;
+function hidePlaces() { $("placeResults").hidden = true; }
+function renderPlaces(msg) {
+  const box = $("placeResults");
+  box.innerHTML = places.length
+    ? places.map((p, i) => `<button data-i="${i}" class="${i === placeSel ? "sel" : ""}"><span class="kind">${esc(p.kind)}</span>${esc(p.label)}<span class="detail">${esc(p.detail)}</span></button>`).join("")
+    : `<div class="note" style="padding:8px 10px">${esc(msg || "No US county, city or ZIP matches")}</div>`;
+  box.querySelectorAll("button").forEach((b) => b.onclick = () => choosePlace(places[+b.dataset.i]));
+  box.hidden = false;
+}
+async function searchPlaces() {
+  const q = $("place").value.trim(), seq = ++placeSeq;
+  if (q.length < 2) return hidePlaces();
+  try {
+    const data = await (await fetch("/api/places?" + new URLSearchParams({ q, limit: "7" }))).json();
+    if (seq !== placeSeq) return;                       // a newer keystroke already searched
+    places = data.results; placeSel = places.length ? 0 : -1; renderPlaces();
+  } catch { places = []; renderPlaces("Place search is unavailable right now"); }
+}
+async function choosePlace(p) {
+  $("place").value = p.label; hidePlaces();
+  // a county: its own outline; a city or ZIP: a box sized from its land area
+  const shape = L.geoJSON(p.geometry, { style: { color: "#256abf", weight: 2.5, fillOpacity: 0.04, dashArray: p.outline ? "6 4" : null } }).getLayers()[0];
+  drawn.clearLayers(); drawn.addLayer(shape);
+  await setGeometry(p.geometry);                        // ~0.1 s; then fly to every county it selected
+  const view = L.latLngBounds(p.bounds);
+  if (countyLayer.getLayers().length) view.extend(countyLayer.getBounds());
+  map.flyToBounds(view, { padding: [50, 50], duration: 2.2, maxZoom: 11 });
+}
+$("place").addEventListener("input", () => { clearTimeout(placeTimer); placeTimer = setTimeout(searchPlaces, 120); });
+$("place").addEventListener("keydown", (e) => {
+  if ((e.key === "ArrowDown" || e.key === "ArrowUp") && places.length) {
+    e.preventDefault(); placeSel = (placeSel + (e.key === "ArrowDown" ? 1 : places.length - 1)) % places.length; renderPlaces();
+  } else if (e.key === "Enter") { e.preventDefault(); if (places.length) choosePlace(places[Math.max(placeSel, 0)]); }
+  else if (e.key === "Escape") hidePlaces();
+});
+document.addEventListener("click", (e) => { if (!e.target.closest(".search")) hidePlaces(); });
 EXAMPLES.forEach((q) => { const b = document.createElement("button"); b.className = "chip"; b.textContent = q; b.onclick = () => { $("q").value = q; }; $("examples").appendChild(b); });
 document.querySelectorAll("[data-date]").forEach((b) => b.onclick = () => { $("asof").value = b.dataset.date === "today" ? $("asof").max : b.dataset.date; });
 function updateAsk() { $("ask").disabled = !geometry || busy; $("ask").textContent = busy ? "Working…" : geometry ? "Ask" : "Select an area first"; }
@@ -240,6 +437,7 @@ $("q").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey 
 async function ask() {
   if (!geometry || busy) return;
   busy = true; updateAsk(); $("err").textContent = "";
+  scanStart($("area").querySelector("b")?.textContent || "selected area");
   findings = {}; layers = {}; renderLegend(); countyLayer.setStyle(countyStyle);
   $("agents").innerHTML = ""; $("findings").innerHTML = ""; $("answer").innerHTML = ""; $("citecheck").textContent = ""; $("rejects").textContent = ""; $("planReason").textContent = "";
   ["agentsBox", "answerBox", "findingsBox"].forEach((id) => $(id).hidden = true);
@@ -257,23 +455,25 @@ async function ask() {
         const e = JSON.parse(line.slice(6));
         if (e.type === "error") { $("err").textContent = e.message; }
         else if (e.type === "region") showRegion(e.region, e.outlines);
-        else if (e.type === "plan") { $("agentsBox").hidden = false; $("planReason").textContent = `· ${e.reason}`; $("llm").textContent = `${e.llm} · ${e.model}`;
+        else if (e.type === "plan") { scanPlan(e.workers.length); $("agentsBox").hidden = false; $("planReason").textContent = `· ${e.reason}`; $("llm").textContent = `${e.llm} · ${e.model}`;
           e.workers.forEach((w) => { workerNames[w.id] = w.name; $("agents").insertAdjacentHTML("beforeend",
             `<div class="agent" id="ag-${w.id}"><span class="dot"></span><span>${esc(w.name)}</span><span class="meta"></span></div><div class="log" id="log-${w.id}"></div>`); }); }
         else if (e.type === "agent_status") { const a = $(`ag-${e.worker}`); if (!a) continue;
           a.querySelector(".dot").className = `dot ${e.status}`;
+          if (e.status === "done" || e.status === "error") scanAgentDone(e.worker);
           if (e.status === "done") a.querySelector(".meta").textContent = `${e.findings} finding${e.findings === 1 ? "" : "s"} · ${e.seconds}s`; }
         else if (e.type === "agent_log") { const l = $(`log-${e.worker}`); if (l) l.textContent = e.message; }
         else if (e.type === "layer") { if (e.values) e.scale = scaleFor(e.values); if (e.kind !== "hotspots" && !e.scale) continue;
           layers[e.kind] = e; countyLayer.setStyle(countyStyle); renderLegend(); }
         else if (e.type === "finding") addFinding(e.finding);
         else if (e.type === "rejected") { rejected++; $("rejects").textContent = `· ${rejected} dropped by validator`; }
-        else if (e.type === "answer_delta") { $("answerBox").hidden = false; answer += e.text; $("answer").innerHTML = renderAnswer(answer); }
+        else if (e.type === "answer_delta") { scanWriting(); $("answerBox").hidden = false; answer += e.text; $("answer").innerHTML = renderAnswer(answer); }
         else if (e.type === "answer_done") { $("citecheck").textContent = e.unknown.length ? `Cites unknown findings: ${e.unknown.join(", ")}` :
             e.uncited_answer ? "The answer cites no findings; read it with care." : `Cites ${e.cited.length} findings.`; bindCites(); }
       }
     }
   } catch (err) { $("err").textContent = String(err); }
+  scanEnd();
   busy = false; updateAsk();
 }
 function addFinding(f) {
@@ -286,7 +486,8 @@ function addFinding(f) {
 function renderAnswer(text) {
   let h = esc(text).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
   h = h.replace(/(^|\n)((?:[-•] .*(?:\n|$))+)/g, (m, pre, block) => `${pre}<ul>${block.trim().split("\n").map((l) => `<li>${l.replace(/^[-•] /, "")}</li>`).join("")}</ul>`);
-  return h.replace(/\[(F\d+)\]/g, '<button class="cite" data-f="$1">$1</button>');
+  return h.replace(/\[(F\d+(?:\s*[,;]\s*F\d+)*)\]/g, (_, ids) =>
+    ids.split(/\s*[,;]\s*/).map((id) => `<button class="cite" data-f="${id}">${id}</button>`).join(" "));
 }
 function bindCites() { document.querySelectorAll(".cite").forEach((b) => b.onclick = () => focusFinding(b.dataset.f)); }
 function focusFinding(id) {

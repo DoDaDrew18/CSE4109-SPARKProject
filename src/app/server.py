@@ -13,6 +13,9 @@ modeled on CalHacks 13's RunEvent protocol:
     answer_delta   a chunk of the streamed answer
     answer_done    the citation check
     error / done
+
+``GET /api/places?q=`` searches counties, cities and ZIP codes (local Census
+files, see ``places``) for the map's search box.
 """
 
 from __future__ import annotations
@@ -31,7 +34,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
-from src.app import llm
+from src.app import llm, places
 from src.app.region import RegionError, counties, resolve
 from src.app.validate import check_answer, check_finding, check_question
 from src.app.workers import WORKERS, Context, Finding, run_worker
@@ -163,6 +166,11 @@ def region(body: RegionBody):
     except RegionError as exc:
         raise HTTPException(400, str(exc)) from exc
     return {"region": r.as_dict(), "outlines": _outlines(r.fips)}
+
+
+@app.get("/api/places")
+def place_search(q: str = "", limit: int = 8):
+    return {"results": places.search(q, limit=max(1, min(limit, 10)))}
 
 
 def _sse(events: Iterator[dict]) -> Iterator[str]:

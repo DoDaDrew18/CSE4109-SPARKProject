@@ -196,7 +196,9 @@ class Refitter:
         origin = pd.Timestamp(origin)
         key = (kind, tuple(columns), tuple(exclude_fips))
         fitted_at, model = self._cache.get(key, (None, None))
-        if model is None or origin - fitted_at >= pd.Timedelta(weeks=self.every):
+        # Reuse only forward in time: a model fitted at a later origin has seen
+        # weeks that were not settled yet on an earlier date (the app asks any date).
+        if model is None or not fitted_at <= origin < fitted_at + pd.Timedelta(weeks=self.every):
             model = fit(pool(self.rows, origin, exclude_fips=exclude_fips), columns, kind)
             if model is not None:
                 self._cache[key] = (origin, model)
