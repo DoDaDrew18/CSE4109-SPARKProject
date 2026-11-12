@@ -98,6 +98,16 @@ week may still have moved slightly after the date (revision profile: under 2%
 of values move >5% after 8 weeks). The ridge rungs learn from about 150
 local examples, and they lose.
 
+**Can it beat +19%? (pre-registered, `python -m src.improve`).** Candidates
+were chosen on the 2024-25 season only and the pick was scored once on
+2025-26. Correcting the newest values for backfill plus an absolute-error
+loss (`revision+l1`) did best on dev (+21.3% vs rung 6's +17.2%) and scored
++24.4% vs +21.1% on test, but the test gain is not significant (paired
+Wilcoxon p = 0.70; bootstrap MAE difference −0.019 [−0.051, +0.011]); it
+comes from peak weeks, the onsets rung 6 lags. An age-aware variant and an
+ensemble of the four nonlinear rungs (`python -m src.horizon`) did not beat
+rung 6. The app still uses rung 6.
+
 **News (first pass, LLM labels, not yet checked against humans).** A local
 model (Qwen3 8B via Ollama, free; `python -m src.news.label`) labeled 224
 articles; the quote check kept about 50 relevant articles tied to a study
@@ -230,12 +240,16 @@ python -m src.spatial.query "where was flu rising around St. Louis at Christmas 
 python -m src.app                         # http://127.0.0.1:8050
 ```
 
-Draw a box or polygon on the map (or click a metro), pick an **as-of date**,
-and ask, e.g. "Is flu rising here, and is it worse than nearby counties?".
+Search a place (city, county or ZIP), draw a box or polygon on the map, or
+click a metro; pick an **as-of date**, and ask, e.g. "Is flu rising here, and is it worse than nearby counties?".
 Agents pull data for the counties inside the shape and drop findings on the
 map, and an LLM writes a short answer that cites them (`[F3]`). The
 idea comes from Noah's CalHacks 13 project (Coordinate); the data and rules
-are this study's:
+are this study's. The map opens on satellite imagery (switch to light gray or
+streets at top right; Esri tiles, no key). Place search runs on the server
+against Census Gazetteer files (`src/app/places.py`, downloaded once into
+`raw/reference`): a county selects its own outline, a city or ZIP a box sized
+from its land area.
 
 - **Everything is as of the date.** NSSP is read from the vintage public that
   day (Delphi `as_of`, cached in `raw/app_cache/`), and every finding carries
@@ -246,8 +260,21 @@ are this study's:
   surrounding counties, NWSS wastewater (labeled proxy before 2026-04-17),
   Open-Meteo weather and CAMS air quality, and news (labeled study corpus +
   live GDELT headlines).
-- **Answers:** Claude (`claude-opus-5-5`) when `ANTHROPIC_API_KEY` is set,
-  else local Ollama `qwen3:8b`, else a rule-based summary. Force one with
+- **How sure is the nowcast?** (`src/uncertainty.py`) Each nowcast comes
+  with an 80% range from conformalized quantile regression: two gradient-boosting
+  models learn the 10th and 90th percentiles of the weekly change from the same
+  national history, and the newest 12 settled weeks calibrate them. An
+  **Outlook** agent finds the 60 most similar past situations (level, momentum,
+  time of year) across 675 HSAs and reports how often ED share rose 10%+ the
+  next week, naming the closest matches. Checked on the vintaged study backtest
+  (`python -m src.uncertainty`, 532 county-weeks): the 80% range held the final
+  value 89% of the time (a little wide); the rise probability has AUC 0.78 and
+  Brier skill +22% even against the true base rate known in hindsight
+  (+23% vs the history base rate available on the date); it overstates rises
+  in the 40-60% band (predicted 51%, observed 35%).
+- **Answers:** local Ollama `qwen3:8b` by default (`ollama serve`, `ollama
+  pull qwen3:8b`), else a rule-based summary. Claude (`claude-opus-5-5`) only
+  with `SPARK_APP_LLM=claude`. Force any tier with
   `SPARK_APP_LLM=claude|ollama|template`. Findings are screened for prompt
   injection before the model sees them, and citations of findings that don't
   exist are flagged.
@@ -277,7 +304,7 @@ git clone https://github.com/DoDaDrew18/CSE4109-SPARKProject.git
 cd CSE4109-SPARKProject
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt     # wheels only; no GDAL or compiler needed
-python -m pytest tests/ -q          # expect 301 passed, all offline (macOS: brew install libomp)
+python -m pytest tests/ -q          # expect 322 passed, all offline (macOS: brew install libomp)
 ```
 
 Delphi limits anonymous use to ~60 requests/hour. A free key
@@ -298,6 +325,9 @@ src/nowcast.py         rolling-origin model ladder
 src/evaluate.py        MAE, R², gap closed, skill, Wilcoxon, Holm
 src/validate_results.py  checks on the results: sanity, Holm, small n, news placebo
 src/history.py         national HSA history → gradient-boosted weekly change
+src/uncertainty.py     calibrated 80% ranges (CQR) + analog rise probability, backtested
+src/improve.py         pre-registered dev/test search for a better nowcast (revision+l1)
+src/horizon.py         age-aware and ensemble variants (negative result)
 src/figures.py         demo figures from data/results/
 src/news/              collect, fetch, label (LLM), label_app (humans), ground, agreement,
                        baseline, features, injection screen
