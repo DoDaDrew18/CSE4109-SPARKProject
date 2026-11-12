@@ -1,0 +1,169 @@
+article_id,labeler,relevant,fips,illness,concern,event_week,quote,notes,is_example,labeled_at,seconds
+05844cbe3fe0,human_a,n,,none,0,,,,,2026-11-12T01:36:43+00:00,2
+05ec87aba0f6,human_a,n,,none,0,,"""SSM Health is offering flu shots to the St. Louis community every Saturday from now until Nov. 2 from 8 a.m. to 12 p.m.""",,,2026-11-10T06:21:30+00:00,31
+06616f835d8e,human_a,n,unclear,none,0,,"""ST. LOUIS – Health experts are sending out warnings as flu cases explode across the Midwest—hospitals and urgent cares are filling up, and doctors say the virus is spreading fast.""",,,2026-11-12T00:50:42+00:00,261
+097367975306,human_a,n,21111,none,0,,,,,2026-11-10T06:25:32+00:00,96
+09801ed52a93,human_a,n,,none,0,,,,,2026-11-10T07:01:17+00:00,3
+099d9f5a0db2,human_a,n,,none,0,,,,,2026-11-10T05:59:13+00:00,2
+0a5f6216b94b,human_a,n,17031,none,0,,"""Starting Saturday, Cook County residents can receive free flu and COVID-19 shots from the Cook County Department of Public Health.""",,,2026-11-10T06:39:49+00:00,209
+0a910c818d37,human_a,n,,none,0,,,,,2026-11-10T07:02:02+00:00,2
+0b0684f1ab2c,human_a,n,,none,0,,,,,2026-11-12T01:01:11+00:00,3
+0ba091bf82b0,human_a,n,,none,0,,,Not relevant; measles outbreak in South Carolina and nationwide; no target study county explicitly named.,,2026-11-10T06:51:32+00:00,19
+126dbaaa15c0,human_a,n,,none,0,,,,,2026-11-10T07:00:26+00:00,2
+13a3a19a5442,human_a,y,29510,flu,2,,"""St. Charles County is reporting over 3,000 cases for the 2024/2025 flu season while the City of St. Louis and St. Louis County said its influenza activities were ""high"" between Feb.2-Feb. 8.""","Also covers St. Louis County (2,733 cases) and St. Charles County.",,2026-11-10T06:41:49+00:00,61
+1423222efcc5,human_a,n,,none,0,,,,,2026-11-10T06:42:30+00:00,3
+1473d193d719,human_a,n,47157,none,0,,,,,2026-11-10T07:01:59+00:00,42
+174983d27e48,human_a,n,29095,none,0,,"""Nurture KC has announced that it will offer free flu vaccinations to community members between Sept. 25 and Oct. 24.""","Routine flu shot clinic announcement across KC metro (Jackson Co, MO & Wyandotte/Johnson Co, KS); no active illness reported.",,2026-11-10T07:01:04+00:00,38
+17e2503b8fae,human_a,n,,none,0,,,,,2026-11-10T05:59:08+00:00,4
+18466480d825,human_a,n,,none,0,,,,,2026-11-10T07:00:24+00:00,235
+19d967af59df,human_a,n,,none,0,,,,,2026-11-12T00:57:49+00:00,3
+1b6080f4c83e,human_a,n,,none,0,,,,,2026-11-12T01:36:47+00:00,4
+1db92f1bc2a7,human_a,n,,none,0,,,,,2026-11-10T06:00:24+00:00,64
+1e745f2a94ee,human_a,n,,none,0,,,,,2026-11-10T06:51:37+00:00,4
+1f225a4c5f0f,human_a,n,,none,0,,,,,2026-11-12T01:06:44+00:00,2
+217d1faf5fca,human_a,n,,none,0,,,,,2026-11-12T01:01:06+00:00,2
+225c957e7a0c,human_a,n,,none,0,,"""An increase in the number of flu cases has caused the Potosi School District to close for the remainder of the week.""",,,2026-11-10T06:56:29+00:00,194
+269387e9e615,human_a,n,,none,0,,,,,2026-11-12T00:57:55+00:00,2
+2813ad867b7c,human_a,n,,none,0,,,,,2026-11-10T06:36:20+00:00,555
+2b4889ef13b0,human_a,y,21111,covid|flu,1,,"""Mayor Craig Greenberg announced a renewed partnership between Metro Public Health and Wellness and Parks and Recreation to distribute free at-home COVID-19 and flu combo test kits to residents.""",,,2026-11-12T00:57:46+00:00,177
+305b6ec16a4c,human_a,n,,none,0,,,,,2026-11-12T01:36:39+00:00,2
+30e1588741b9,human_a,n,other,none,0,,,Not relevant; news report on Missouri lawsuit against China regarding 2020 COVID-19 PPE hoarding.,,2026-11-10T07:03:08+00:00,26
+313a465fcbe3,human_a,n,,none,0,,,,,2026-11-12T00:58:57+00:00,2
+31aae1e25932,human_a,y,29095,flu,2,,"""Emergency department traffic for respiratory infections in Davidson County is currently low but increasing, specifically around flu and RSV, according to Metro Public Health Department data.""","Reports on Davidson County (Nashville, TN) and statewide/national data; no target study county named.",,2026-11-10T01:44:08+00:00,172
+35106334e9cf,human_a,n,,none,0,,,,,2026-11-10T07:03:15+00:00,7
+355a795270bf,human_a,n,,none,0,,,,,2026-11-12T00:12:05+00:00,3
+38133457f147,human_a,n,,none,0,,,,,2026-11-12T01:37:43+00:00,3
+38d5e11b79d6,human_a,n,,none,0,,,,,2026-11-10T06:40:48+00:00,5
+3ad271be574d,human_a,n,,none,0,,,,,2026-11-10T05:59:16+00:00,3
+3b09e1489b8c,human_a,n,other,none,0,,,Not relevant; explainer on COVID vaccine policy.,,2026-11-10T01:48:28+00:00,49
+3bc0b2ef24f8,human_a,n,,none,0,,,,,2026-11-12T00:57:58+00:00,3
+3c1a2b002d45,human_a,n,,none,0,,,,,2026-11-10T06:48:58+00:00,5
+3c55f3dbef15,human_a,n,,none,0,,,,,2026-11-12T01:01:02+00:00,5
+3eb962e94014,human_a,n,,none,0,,,,,2026-11-10T06:39:52+00:00,3
+4046178538c9,human_a,n,,none,0,,,Not relevant; water utility bill relief program.,,2026-11-10T01:45:39+00:00,45
+428dd2b0a8c3,human_a,n,,none,0,,,,,2026-11-12T00:54:49+00:00,3
+46961503e621,human_a,n,other,none,0,,"""State health officials say flu activity is increasing across the commonwealth, particularly among children.""",Kenton County and Kentucky statewide reported; outside study counties.,,2026-11-12T00:46:16+00:00,1756
+48adc7162980,human_a,n,,none,0,,,,,2026-11-12T00:54:43+00:00,3
+4a46c806830f,human_a,n,unclear,none,0,,"""Dr. Maya Moody treats children daily during one of the worst flu outbreaks in the past 15 years.""",No county explicitly named in text; local column on stltoday.com.,,2026-11-10T00:22:07+00:00,206
+4b7f20e50351,human_a,n,,none,0,,,,,2026-11-10T06:26:57+00:00,2
+4bc7ff914d9c,human_a,n,29189,none,0,,,,,2026-11-10T06:40:43+00:00,47
+4c6883924232,human_a,n,,none,0,,,,,2026-11-10T06:50:23+00:00,85
+4ca18efb287d,human_a,n,,none,0,,,,,2026-11-10T06:27:05+00:00,2
+4cc4c4ad37d9,human_a,n,,none,0,,,,,2026-11-10T05:59:21+00:00,5
+51312ef42ee1,human_a,n,,none,0,,,,,2026-11-12T01:13:28+00:00,5
+5214c22aa178,human_a,n,other,none,0,,"""In poultry, bird flu cases are spiking earlier than expected.""","Avian flu (H5N1) in poultry and wild birds (MN, IA); no target study county named.",,2026-11-10T01:38:02+00:00,38
+521f880ca858,human_a,n,,none,0,,,,,2026-11-10T07:01:14+00:00,6
+533b8d801ad9,human_a,y,29095,flu,2,,"""The Jackson County Health Department reports almost five times as many flu cases than it did a week ago, and a boost in respiratory conditions similar to Influenza A, too.""",,,2026-11-10T01:47:38+00:00,48
+534e27b265cc,human_a,n,,none,0,,,,,2026-11-10T06:03:20+00:00,4
+5755343d7c56,human_a,n,,none,0,,,,,2026-11-12T01:13:30+00:00,2
+5862cf1b539a,human_a,n,unclear,none,0,,"""enjoyed a resurgence in popularity during the lockdowns of the COVID-19 pandemic.""",Not relevant; news article about Bob Ross auction with historical COVID reference.,,2026-11-10T01:36:36+00:00,121
+592f91441a6f,human_a,n,,none,0,,,,,2026-11-12T00:46:18+00:00,2
+5a48f27e5f83,human_a,y,17031,flu,2,,"""As of Friday, visits to emergency rooms and hospitalizations increased from moderate to high across all age categories but especially for children from newborn to 17 years old, the Chicago Department of Public Health said.""",,,2026-11-10T00:18:40+00:00,3225
+5aedf4609aa2,human_a,n,,none,0,,,,,2026-11-12T00:58:54+00:00,3
+5fca4c79f7d7,human_a,n,21111,none,0,,,,,2026-11-10T05:48:54+00:00,14427
+6217d1b2ace3,human_a,n,,none,0,,,,,2026-11-12T00:17:00+00:00,291
+626d0aa1ff7e,human_a,n,,none,0,,"""The Mid America Regional Council announced on Friday, Dec. 19, that flu, whooping cough and measles cases are all rising locally.""",Mentions KC metro (MARC) and Clay County; Jackson County not explicitly named.,,2026-11-10T06:03:10+00:00,43
+632f2aa08ac9,human_a,y,29095,flu,2,2026-01-03,"""Flu cases in Jackson County are at their highest levels in five years, with this week's numbers nearly five times higher than last week, according to Jackson County Public Health.""",,,2026-11-12T01:39:24+00:00,2
+636517323d67,human_a,n,29189,none,0,,"""Anderson Hospital in Maryville, Ill., had to enact visitor restrictions due to an influx of patients with the viruses.""","National/CDC and MO statewide coverage; mentions Maryville (Madison County, IL). No target study county named.",,2026-11-10T01:37:24+00:00,48
+63cc7f892122,human_a,n,,none,0,,,,,2026-11-10T06:43:34+00:00,21
+6529d88dd7c2,human_a,n,,none,0,,,,,2026-11-10T06:23:56+00:00,3
+65c7ab5ab6a4,human_a,n,17031,none,0,,"""Like many other businesses, Sikia, a student-run restaurant inside Kennedy-King College’s Washburne Culinary and Hospitality Institute, shut its doors during the COVID-19 pandemic.""","Restaurant reopening in Englewood; historical COVID-19 reference only, no current surveillance data.",,2026-11-12T01:20:29+00:00,415
+65e694c94e41,human_a,n,,none,0,,,Not relevant; golf tournament relocation due to LA wildfires with historical 2020 COVID reference.,,2026-11-10T06:42:27+00:00,33
+66011c0dfe40,human_a,n,,none,0,,,,,2026-11-12T01:06:33+00:00,4
+665ef9ee9b8f,human_a,n,,none,0,,,,,2026-11-12T00:58:46+00:00,2
+6681745cbd76,human_a,n,21111,none,0,,,"Statewide IL coverage; mentions Bellwood (Cook Co.), West Chicago, Rockford, Peoria, Champaign, and Metro East.",,2026-11-10T05:54:53+00:00,112
+6764feb291e2,human_a,n,other,none,0,,"""The Illinois Department of Public Health reported Jan. 7 the state is at a “high” level for respiratory illness activity, and emergency department visit rates have recently more than doubled for flu and increased for COVID, as well.""","Statewide IL coverage; mentions Sangamon & St. Clair counties, no target study county named.",,2026-11-09T23:24:55+00:00,2109
+67746926765e,human_a,n,,none,0,,,,,2026-11-10T06:26:54+00:00,8
+68ddcde05efb,human_a,y,17031,flu,3,,"""Cook County officials said intensive care unit admissions for flu nearly doubled in the last week.""",Chicago and Cook County explicitly reported; ED visits at 3-year high and ICU admissions doubled.,,2026-11-12T01:13:22+00:00,399
+68e96c757941,human_a,n,other,none,0,,"""A final federal report shows Gateway Regional Medical Center’s Medicare provider agreement is on track to be terminated unless the hospital corrects deficiencies identified by inspectors.""",,,2026-11-12T00:54:35+00:00,229
+6996146d91a2,human_a,n,,none,0,,,,,2026-11-12T01:36:37+00:00,21
+6ad06e714e16,human_a,n,,none,0,,,,,2026-11-12T01:20:38+00:00,2
+6c14787f49ee,human_a,y,18097,flu,1,,"""Hospitals in Marion County are preparing to limit visitors at Indianapolis hospitals and other health facilities due to a “steady increase in flu activity and RSV.”",,,2026-11-10T01:41:15+00:00,193
+6cb28717bb1c,human_a,n,other,none,0,,"""U.S. Rep. Nikki Budzinski, D-Springfield, is asking the owners of a Granite City hospital about issues that she said have kept patients from receiving care.""","Granite City (Madison County), IL; reports hospital payroll and management concerns without respiratory illness data.",,2026-11-12T01:34:32+00:00,826
+6e491e08d81d,human_a,y,29510,covid|flu|respiratory_general|rsv,1,,"""MEMPHIS, Tenn. - Labor Day may mark the unofficial end of summer, but respiratory viruses are already making the rounds as doctors look ahead to the fall and winter virus season.""",,,2026-11-12T00:58:44+00:00,46
+6ff4015c3904,human_a,n,29189,none,0,,"""More people are visiting the doctor with coronavirus symptoms, said Beth Huelskoetter, a nurse practitioner at OSF HealthCare in Godfrey.""","Mentions St. Louis region, Godfrey (IL), Region 7, and MO statewide wastewater; St. Louis County named for vaccine clinics.",,2026-11-10T01:34:35+00:00,4167
+701debfd9bbb,human_a,n,,none,0,,,,,2026-11-12T00:46:21+00:00,3
+72b3cb11dcd4,human_a,n,other,none,0,,"""Flu is rising rapidly across the U.S., driven by a new variant of the virus — and cases are expected to keep growing with holiday travel.""",National/CDC coverage; no target study county explicitly named in text.,,2026-11-10T00:25:08+00:00,68
+75dc7167af67,human_a,y,17031,flu,1,,"""Dr. Wheat said Chicago emergency rooms and urgent cares are busy with the Respiratory Syncytial Virus, norovirus, and the dominant subclade K flu strain.""",,,2026-11-10T01:46:13+00:00,34
+772db0a186e4,human_a,n,,none,0,,,,,2026-11-10T05:59:10+00:00,2
+78ad1862ce5e,human_a,n,other,none,0,,"""The state board said bird flu in wild birds and poultry pose a low risk to the health of the general public.""","Seymour, IN (Jackson County, IN); avian flu outbreak in egg-laying flock with no human cases reported.",,2026-11-12T01:36:16+00:00,90
+78eb257a74a3,human_a,n,,none,0,,,,,2026-11-12T01:20:41+00:00,2
+82a70d5cb3d4,human_a,n,,none,0,,,,,2026-11-10T06:03:22+00:00,2
+8449282730f7,human_a,n,,none,0,,,,,2026-11-10T07:01:08+00:00,4
+847cc141fd66,human_a,n,,none,0,,,,,2026-11-10T06:39:54+00:00,2
+873bbcec687c,human_a,n,,none,0,,,,,2026-11-12T01:20:46+00:00,5
+87e1e4bddca2,human_a,n,,none,0,,,,,2026-11-10T06:27:03+00:00,2
+89654fe9d529,human_a,n,,none,0,,,,,2026-11-12T00:50:45+00:00,4
+8b51097b67f7,human_a,n,,none,0,,,,,2026-11-10T06:20:59+00:00,2
+8d5d21cfc49d,human_a,n,,none,0,,,,,2026-11-10T06:48:20+00:00,283
+9306bdd6e7b2,human_a,n,,none,0,,,,,2026-11-12T01:13:35+00:00,2
+942237f5aec9,human_a,y,29510,flu,1,,"""ST. LOUIS, Mo. (First Alert 4) - St. Louis researchers played a vital role in clinical trials for a newly approved tool designed to protect families ahead of the winter flu season.""",St. Louis referenced generally; covers WashU trials and FDA approval of mRNA flu vaccine.,,2026-11-12T01:00:57+00:00,120
+95eb93084b19,human_a,y,18097,flu,3,,"""In the past month, more than 3,700 people went to local emergency rooms with flu-like illness, according to Marion County Public Health Department data.""",,,2026-11-10T06:48:53+00:00,32
+97fc018d86f4,human_a,n,29189,none,0,,,,,2026-11-10T05:58:00+00:00,187
+98e77a7658ac,human_a,y,17031,covid|flu|respiratory_general|rsv,2,,"""After a one-week dip, Illinois health officials are reporting an uptick in respiratory illnesses which is being driven by flu cases.""",,,2026-11-12T01:06:29+00:00,317
+9ead7e8be62b,human_a,n,,none,0,,,,,2026-11-10T06:43:37+00:00,3
+a1979000d207,human_a,n,29510,none,0,,"""Some bird exhibits are being moved indoors and others closed after Saint Louis Zoo officials found a wild duck dead of bird flu.""",Avian flu in a wild wood duck at Saint Louis Zoo; no human illness reported.,,2026-11-10T05:53:01+00:00,227
+a22acd7e60ea,human_a,n,,none,0,,,,,2026-11-12T00:57:53+00:00,2
+a29805615698,human_a,n,,none,0,,,,,2026-11-10T06:53:12+00:00,2
+a33ba802df87,human_a,n,,none,0,,,,,2026-11-10T06:41:54+00:00,4
+a3b11607ef4e,human_a,n,,none,0,,,,,2026-11-10T06:51:10+00:00,2
+a78e43978a9c,human_a,y,29189,covid,0,,"""Data through Jan. 4 show more than 1,600 positive flu cases in St. Louis County, with approximately 1,500 cases identified as Influenza A and just over 100 cases as Influenza B.""",,,2026-11-12T01:39:50+00:00,2
+a87f2a422bbd,human_a,n,,none,0,,,Not relevant; opioid overdose prevention and Narcan dispenser installation.,,2026-11-10T06:23:53+00:00,24
+a94b05d2a642,human_a,y,29095,flu,2,2025-12-27,"""Department numbers for the week of Dec. 21 to Dec. 27, 2025, show influenza cases doubled compared to the week prior.""",,,2026-11-09T22:49:45+00:00,889
+a96f98291974,human_a,n,,none,0,,,,,2026-11-12T00:57:51+00:00,2
+a9af0fb97523,human_a,n,,none,0,,,,,2026-11-10T06:02:27+00:00,3
+aec88c1bb2c7,human_a,y,47157,flu,2,,"""Right now, he says RSV cases are spiking, and he expects the flu won't be far behind.""",,,2026-11-10T01:46:50+00:00,37
+b0fce09b05f0,human_a,n,,none,0,,"""From our own reporting, we know that school closures have been steadily increasing as well, with many districts now moving to NTI because of a spike in flu cases.""",Statewide KY / Frankfort coverage; school closures noted. Jefferson County not explicitly named in text.,,2026-11-10T06:01:38+00:00,74
+b476be3d7d7b,human_a,n,,none,0,,,,,2026-11-12T00:54:46+00:00,3
+b5cd2ca24305,human_a,n,other,none,0,,,"Not relevant; political news report on Dr. Fauci's security detail, not respiratory illness activity.",,2026-11-10T06:53:07+00:00,90
+b5d7edca716a,human_a,n,,none,0,,,,,2026-11-12T01:34:39+00:00,2
+bb1faa7c3a0c,human_a,n,,none,0,,,,,2026-11-10T06:51:02+00:00,4
+bc79f9178157,human_a,n,,none,0,,,,,2026-11-12T01:06:38+00:00,2
+bd9956251547,human_a,n,,none,0,,,,,2026-11-12T01:37:39+00:00,3
+be32d8868add,human_a,n,,none,0,,,,,2026-11-12T01:36:41+00:00,2
+bef9a5470193,human_a,n,,none,0,,,,,2026-11-12T01:06:41+00:00,3
+bfe9d7055937,human_a,n,,none,0,,,,,2026-11-12T01:34:41+00:00,2
+c093496de45d,human_a,n,,none,0,,,,,2026-11-10T06:51:08+00:00,2
+c38cf4a9bc16,human_a,n,,none,0,,,,,2026-11-12T01:01:04+00:00,2
+c7b80d07916c,human_a,n,,none,0,,,,,2026-11-12T00:12:08+00:00,3
+c81a398725fc,human_a,n,,none,0,,,,,2026-11-10T06:26:46+00:00,3
+c898f4f1b59d,human_a,n,,none,0,,,,,2026-11-10T06:20:57+00:00,1055
+c959afd00f87,human_a,n,,none,0,,,,,2026-11-12T01:06:36+00:00,3
+d0d0ad17c54e,human_a,n,,none,0,,,,,2026-11-12T00:54:40+00:00,2
+d3f79ed29ca7,human_a,n,,none,0,,,,,2026-11-10T06:39:57+00:00,2
+d4e4c02187f5,human_a,n,,none,0,,,,,2026-11-10T06:26:59+00:00,2
+d55183fed9e6,human_a,n,,none,0,,,,,2026-11-12T01:34:44+00:00,3
+d63371dec95d,human_a,n,,none,0,,,Not relevant; CIA intelligence assessment on COVID-19 origin.,,2026-11-10T06:50:59+00:00,31
+d880437c14b1,human_a,n,,none,0,,,,,2026-11-12T01:01:08+00:00,2
+d8c29d6a0374,human_a,n,,none,0,,,,,2026-11-10T06:50:28+00:00,5
+d9a4875e718f,human_a,n,unclear,none,0,,"""Total Access Urgent Care locations across the Metro are seeing a spike in patients, mostly with respiratory illnesses or the stomach bug.""","St. Louis Metro referenced generally; reports flu positivity at 22%, rising COVID cases, and 3–6 hour urgent care wait times.",,2026-11-12T01:37:36+00:00,49
+d9eba9d13304,human_a,n,,none,0,,,,,2026-11-10T06:27:01+00:00,2
+da32686e28a1,human_a,n,,none,0,,,"Not relevant; heat wave and weather advisory, not respiratory illness.",,2026-11-10T01:44:54+00:00,46
+dae8a682f1bd,human_a,y,29510,flu,2,2025-12-27,"St. Louis health officials issued a health advisory Thursday, warning that flu cases are surging in the city.",Mentions statewide MO data and IL activity later in text,,2026-11-09T22:27:18+00:00,699
+de5b81e27245,human_a,n,,none,0,,,,,2026-11-12T01:37:45+00:00,2
+ded691b8ea52,human_a,n,,none,0,,,,,2026-11-10T07:02:42+00:00,2
+df2011809af5,human_a,n,,none,0,,,,,2026-11-12T00:58:49+00:00,3
+e598f805ea10,human_a,n,,none,0,,,,,2026-11-10T06:02:24+00:00,46
+e65ae7514149,human_a,n,,none,0,,,,,2026-11-10T06:03:15+00:00,5
+e76507f36951,human_a,n,,none,0,,,,,2026-11-12T00:54:38+00:00,3
+e88fc652f77b,human_a,n,,none,0,,,,,2026-11-12T01:13:32+00:00,2
+e894e6d0d585,human_a,n,,none,0,,,,,2026-11-10T06:51:13+00:00,3
+e8f3eacd8a97,human_a,n,,none,0,,,,,2026-11-10T06:23:29+00:00,115
+e9599bff7e5d,human_a,n,,none,0,,,,,2026-11-10T06:53:10+00:00,2
+eab6d2f491c5,human_a,n,,none,0,,,,,2026-11-12T01:34:46+00:00,2
+eb5ff8fac0e2,human_a,n,,none,0,,,,,2026-11-10T06:53:15+00:00,2
+ecd207bb2552,human_a,n,,none,0,,,,,2026-11-12T01:34:37+00:00,5
+ede6c02c21f3,human_a,n,,none,0,,,,,2026-11-10T06:51:05+00:00,3
+ee0052049b95,human_a,n,,none,0,,,"Not relevant; pediatric drug overdose prevention, lockboxes, and Narcan program.",,2026-11-10T05:59:04+00:00,30
+eecf1422476a,human_a,n,,none,0,,,,,2026-11-12T01:39:14+00:00,9
+f5e0d951648f,human_a,y,18097,flu,1,,"""Mirror Indy reporter Darian Benson covers east Indianapolis.""",,,2026-11-10T00:24:00+00:00,113
+f6529f874899,human_a,n,,none,0,,,,,2026-11-10T06:21:34+00:00,4
+f8f3267d6f03,human_a,n,,none,0,,,,,2026-11-12T01:20:33+00:00,3
+f978440301be,human_a,n,,none,0,,,,,2026-11-12T01:20:36+00:00,3
+f9c9967e2866,human_a,n,other,none,0,,,Not relevant; day care program fraud investigation in Minnesota with historical 2022 COVID-19 pandemic fraud reference.,,2026-11-10T07:02:37+00:00,36
+f9e4b3d8fdc5,human_a,n,,none,0,,,,,2026-11-10T07:02:40+00:00,3
+facd552c3ca4,human_a,n,29095,none,0,,"""Flu is surging across the U.S., sending thousands more people to the hospital and hitting young children especially hard, as doctors warn the season still has a long way to go.""",National/CDC coverage; no target study county explicitly named in text.,,2026-11-10T05:58:35+00:00,35
+fae568720463,human_a,y,29189,flu,3,,"""Flu cases are rising at record levels, at levels we haven't seen in a decade,” said Page.",,,2026-11-10T06:43:13+00:00,43
+fb22c1597796,human_a,n,,none,0,,"""So we wanted to partner with the People’s Health Center and the City of St. Louis to make the vaccine available at the neighborhood level.""",Routine COVID-19 vaccine event announcement in St. Louis City; no active disease metrics reported.,,2026-11-10T06:26:43+00:00,70
+fbdb8651b57b,human_a,y,29189,flu,2,,"The American people demanded science, safety, and common sense. This framework delivers all three,” said U.S. Health Secretary Robert F. Kennedy Jr.",,,2026-11-10T05:49:14+00:00,19
+ff901e182b6b,human_a,n,,none,0,,,,,2026-11-12T00:58:51+00:00,2
